@@ -10,6 +10,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 import mimetypes
 from io import BytesIO
+from urllib.parse import urlparse
 
 # Configure logging
 logging.basicConfig(
@@ -95,7 +96,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
                                 logger.error(f"Error reading metadata for {staff_id}: {e}")
                         
                         # Find the latest screenshot for this staff member
-                        screenshot_files = [f for f in os.listdir(staff_dir) if f.endswith('.jpg')]
+                        screenshot_files = [f for f in os.listdir(staff_dir) if f.endswith('.jpg') and f != 'latest.jpg']
                         
                         if screenshot_files:
                             # Sort by modification time (newest first)
@@ -108,14 +109,15 @@ class HTTPHandler(BaseHTTPRequestHandler):
                             try:
                                 if os.path.exists(latest_link):
                                     os.remove(latest_link)
-                                os.symlink(latest_file, latest_link)
-                            except (OSError, AttributeError):
-                                # If symlinks not supported, just copy the file
-                                try:
+                                if hasattr(os, 'symlink'):
+                                    os.symlink(latest_file, latest_link)
+                                else:
+                                    # If symlinks not supported, just copy the file
                                     with open(file_path, 'rb') as src, open(latest_link, 'wb') as dst:
                                         dst.write(src.read())
-                                except Exception as e:
-                                    logger.error(f"Failed to copy latest screenshot: {e}")
+                                logger.info(f"Updated latest.jpg for {staff_id}")
+                            except Exception as e:
+                                logger.error(f"Failed to create latest.jpg: {e}")
                             
                             # Get modified time as ISO string
                             mod_time = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
@@ -134,14 +136,14 @@ class HTTPHandler(BaseHTTPRequestHandler):
                     'demo_user_1': {
                         "path": "/screenshots/demo_user_1/latest.jpg",
                         "timestamp": datetime.now().isoformat(),
-                        "name": "Unknown User",
-                        "division": "Unassigned"
+                        "name": "Demo Kullanıcı 1",
+                        "division": "Pazarlama"
                     },
                     'demo_user_2': {
                         "path": "/screenshots/demo_user_2/latest.jpg",
                         "timestamp": datetime.now().isoformat(),
-                        "name": "Unknown User",
-                        "division": "Unassigned"
+                        "name": "Demo Kullanıcı 2",
+                        "division": "Satış"
                     }
                 }
             
@@ -155,9 +157,14 @@ class HTTPHandler(BaseHTTPRequestHandler):
         
         # Serve static files (screenshots)
         elif self.path.startswith('/screenshots/'):
-            file_path = self.path[1:]  # Remove leading slash
+            # Parse URL to extract path without query string
+            parsed_url = urlparse(self.path)
+            clean_path = parsed_url.path[1:]  # Remove leading slash but keep only the path
+            file_path = os.path.join(os.getcwd(), clean_path)
             
-            if os.path.isfile(file_path):
+            logger.info(f"Request for screenshot file: {self.path}, serving from: {file_path}")
+            
+            if os.path.exists(file_path) and os.path.isfile(file_path):
                 self.send_response(200)
                 
                 # Determine content type
@@ -167,29 +174,68 @@ class HTTPHandler(BaseHTTPRequestHandler):
                 else:
                     self.send_header('Content-type', 'application/octet-stream')
                     
+                # Important headers for images
                 self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                self.send_header('Pragma', 'no-cache')
+                self.send_header('Expires', '0')
                 self.end_headers()
                 
-                with open(file_path, 'rb') as f:
-                    self.wfile.write(f.read())
+                try:
+                    with open(file_path, 'rb') as f:
+                        image_data = f.read()
+                        self.wfile.write(image_data)
+                        logger.info(f"Successfully served image file: {file_path} ({len(image_data)} bytes)")
+                except Exception as e:
+                    logger.error(f"Error reading file {file_path}: {e}")
+                    self.wfile.write(b"Error reading file")
                 return
             else:
-                # For demo purposes, return a placeholder image
-                self.send_response(200)
-                self.send_header('Content-type', 'image/jpeg')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
+                # Check if file exists without 'latest.jpg'
+                if file_path.endswith('latest.jpg'):
+                    staff_dir = os.path.dirname(file_path)
+                    if os.path.exists(staff_dir) and os.path.isdir(staff_dir):
+                        # Look for latest jpg file in directory
+                        screenshot_files = [f for f in os.listdir(staff_dir) if f.endswith('.jpg') and f != 'latest.jpg']
+                        if screenshot_files:
+                            # Sort by modification time (newest first)
+                            screenshot_files.sort(key=lambda x: os.path.getmtime(os.path.join(staff_dir, x)), reverse=True)
+                            latest_file = screenshot_files[0]
+                            latest_path = os.path.join(staff_dir, latest_file)
+                            
+                            # Create or update the latest.jpg symlink/copy
+                            try:
+                                if os.path.exists(file_path):
+                                    os.remove(file_path)
+                                if hasattr(os, 'symlink'):
+                                    os.symlink(latest_file, file_path)
+                                else:
+                                    # If symlinks not supported, just copy the file
+                                    with open(latest_path, 'rb') as src, open(file_path, 'wb') as dst:
+                                        dst.write(src.read())
+                                logger.info(f"Created/updated latest.jpg for {os.path.basename(staff_dir)}")
+                                
+                                # Now serve the file we just created
+                                self.send_response(200)
+                                self.send_header('Content-type', 'image/jpeg')
+                                self.send_header('Access-Control-Allow-Origin', '*')
+                                self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                                self.end_headers()
+                                
+                                with open(file_path, 'rb') as f:
+                                    image_data = f.read()
+                                    self.wfile.write(image_data)
+                                    logger.info(f"Successfully served newly created latest.jpg ({len(image_data)} bytes)")
+                                return
+                            except Exception as e:
+                                logger.error(f"Error creating latest.jpg: {e}")
                 
-                # Create a simple 300x200 black image with PIL
-                try:
-                    from PIL import Image
-                    img = Image.new('RGB', (300, 200), color=(0, 0, 0))
-                    img_bytes = BytesIO()
-                    img.save(img_bytes, format='JPEG')
-                    self.wfile.write(img_bytes.getvalue())
-                except ImportError:
-                    # If PIL not available, return a simple message
-                    self.wfile.write(b"No screenshot available")
+                logger.warning(f"Screenshot file not found: {file_path}")
+                # Return 404 instead of a placeholder image
+                self.send_response(404)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b"Screenshot not found")
                 return
         
         # Default - return 404

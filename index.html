@@ -716,6 +716,24 @@
             }
         }
         
+        // Improved image loading with fallback and retry
+        function loadImage(imgElement, src, attempts = 3) {
+            imgElement.onerror = function() {
+                if (attempts > 0) {
+                    // Retry loading after a short delay
+                    setTimeout(() => {
+                        console.log(`Retrying image load (${attempts} attempts left): ${src}`);
+                        loadImage(imgElement, `${src}&retry=${Date.now()}`, attempts - 1);
+                    }, 1000);
+                } else {
+                    // Give up and use placeholder
+                    console.error(`Failed to load image after multiple attempts: ${src}`);
+                    imgElement.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==';
+                }
+            };
+            imgElement.src = src;
+        }
+        
         // Update live view
         function updateLiveView() {
             if (!liveViewStaffId) return;
@@ -728,7 +746,7 @@
             const path = `${staff.path}?t=${timestamp}`;
             
             const liveImage = document.getElementById('live-image');
-            liveImage.src = path;
+            loadImage(liveImage, path);
             
             document.getElementById('detail-last-time').textContent = `${formatTimeDiff(now, new Date(staff.timestamp))} önce`;
         }
@@ -1085,14 +1103,20 @@
                         <span>${formatTimeDiff(now, timestamp)} önce</span>
                     </div>
                     <div class="staff-image-container">
-                        <img class="staff-image" src="${screenshotInfo.path}?t=${Date.now()}" 
-                             alt="${name} ekran görüntüsü" 
-                             onerror="this.src='data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw=='" />
+                        <img class="staff-image" alt="${name} ekran görüntüsü" 
+                             onload="this.style.opacity='1';" 
+                             style="opacity: 0; transition: opacity 0.3s;"
+                             onerror="this.onerror=null; this.src='data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==';" />
                     </div>
                     <div class="timestamp">
                         <span>${staffId}</span> - ${timestamp.toLocaleString('tr-TR')}
                     </div>
                 `;
+                
+                // Load the image with retry mechanism
+                const imgElement = staffCard.querySelector('.staff-image');
+                const imageSrc = `${screenshotInfo.path}?t=${Date.now()}`;
+                loadImage(imgElement, imageSrc);
             });
             
             // After updating all cards, apply filters

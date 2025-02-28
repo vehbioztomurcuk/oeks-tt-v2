@@ -40,7 +40,7 @@ def load_config():
             json.dump(default_config, f, indent=4)
         return default_config
 
-# Screenshot capture function
+# Screenshot capture function - optimize for quality
 def capture_screenshot(quality=30):
     try:
         with mss.mss() as sct:
@@ -48,15 +48,20 @@ def capture_screenshot(quality=30):
             sct_img = sct.grab(monitor)
             img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
             
-            # Resize to reduce size (optional)
+            # Resize to reduce size but keep reasonable quality
             width, height = img.size
-            new_width = min(1280, width)
+            new_width = min(1280, width)  # Max width 1280px for bandwidth saving
             new_height = int(height * (new_width / width))
             img = img.resize((new_width, new_height), Image.LANCZOS)
             
-            # Convert to bytes
+            # Enhance image quality slightly
+            # from PIL import ImageEnhance
+            # enhancer = ImageEnhance.Contrast(img)
+            # img = enhancer.enhance(1.2)  # Slightly enhance contrast
+            
+            # Convert to bytes with appropriate quality
             buffer = BytesIO()
-            img.save(buffer, format="JPEG", quality=quality)
+            img.save(buffer, format="JPEG", quality=quality, optimize=True)
             return buffer.getvalue()
     except Exception as e:
         logger.error(f"Screenshot capture failed: {e}")
@@ -107,7 +112,7 @@ async def send_screenshots():
                 while True:
                     screenshot = capture_screenshot(quality)
                     if screenshot:
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:20]  # Include milliseconds
                         
                         # Send metadata first
                         metadata = json.dumps({
