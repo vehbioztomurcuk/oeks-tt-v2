@@ -309,4 +309,4 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, signal_handler)
     
     # Run the server
-    asyncio.run(run_server()) 
+    asyncio.run(run_server())
