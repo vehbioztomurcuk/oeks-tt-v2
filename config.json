@@ -1,7 +1,7 @@
 {
-    "admin_ws_url": "ws://ADMIN_IP:8765",
-    "api_key": "your_secret_key_here",
-    "staff_id": "staff_1",
+    "admin_ws_url": "ws://192.168.1.159:8765",
+    "api_key": "oeks_secret_key_2024",
+    "staff_id": "user_pc_name",
     "screenshot_interval": 3,
     "jpeg_quality": 30
 } 
