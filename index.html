@@ -170,26 +170,23 @@
                     console.error('Error fetching staff data:', error);
                     connectionStatus.innerHTML = '🔴 Connection Error';
                     
-                    // If API isn't available yet, fallback to filesystem scanning
+                    // If API isn't available yet, fallback to directory scan
                     fallbackToDirectoryScan();
                 });
         }
         
         // Fallback to directory scan if API isn't available
         function fallbackToDirectoryScan() {
-            // This is a simplified version that just scans the screenshots directory
-            // In a real implementation, you might need server-side code to list directories
-            
-            // For demonstration, let's use some placeholder data
+            // Use placeholder data
             const demoData = {
                 staffList: ['demo_user_1', 'demo_user_2'],
                 latestScreenshots: {
                     'demo_user_1': {
-                        path: 'screenshots/demo_user_1/latest.jpg',
+                        path: '/screenshots/demo_user_1/latest.jpg',
                         timestamp: new Date().toISOString()
                     },
                     'demo_user_2': {
-                        path: 'screenshots/demo_user_2/latest.jpg',
+                        path: '/screenshots/demo_user_2/latest.jpg',
                         timestamp: new Date(Date.now() - 30000).toISOString()
                     }
                 }
@@ -237,7 +234,7 @@
                         </span>
                         <span>${timeDiff}s ago</span>
                     </div>
-                    <img class="staff-image" src="${screenshotInfo.path}?t=${Date.now()}" alt="Screenshot from ${staffId}" />
+                    <img class="staff-image" src="${screenshotInfo.path}?t=${Date.now()}" alt="Screenshot from ${staffId}" onerror="this.src='data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw=='" />
                     <div class="timestamp">
                         ${timestamp.toLocaleString()}
                     </div>

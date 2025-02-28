@@ -9,6 +9,7 @@ from io import BytesIO
 from PIL import Image
 import websockets
 import mss
+import socket
 
 # Configure logging
 logging.basicConfig(
@@ -24,10 +25,12 @@ def load_config():
             return json.load(f)
     except FileNotFoundError:
         logger.error("Configuration file not found. Creating default config.")
+        # Get computer hostname
+        hostname = socket.gethostname()
         default_config = {
-            "admin_ws_url": "ws://localhost:8765",
+            "admin_ws_url": "ws://localhost:8765",  # Change this to admin PC IP
             "api_key": "default_key_change_me",
-            "staff_id": f"staff_{uuid.uuid4().hex[:8]}",
+            "staff_id": f"{hostname}_{uuid.uuid4().hex[:8]}",
             "screenshot_interval": 3,
             "jpeg_quality": 30
         }
@@ -72,6 +75,7 @@ async def send_screenshots():
     
     while True:
         try:
+            logger.info(f"Connecting to admin server at {admin_ws_url}...")
             async with websockets.connect(admin_ws_url) as websocket:
                 logger.info(f"Connected to admin server at {admin_ws_url}")
                 retry_count = 0  # Reset retry count on successful connection
@@ -88,7 +92,8 @@ async def send_screenshots():
                 
                 if auth_response.get("status") != "authenticated":
                     logger.error(f"Authentication failed: {auth_response.get('message')}")
-                    break
+                    await asyncio.sleep(5)
+                    continue
                 
                 logger.info("Authentication successful")
                 
@@ -115,7 +120,8 @@ async def send_screenshots():
                     
         except (websockets.exceptions.ConnectionClosed, 
                 websockets.exceptions.WebSocketException,
-                ConnectionRefusedError) as e:
+                ConnectionRefusedError,
+                socket.gaierror) as e:
             retry_count += 1
             delay = min(60, base_delay * (2 ** retry_count))  # Exponential backoff
             logger.error(f"Connection error: {e}. Retrying in {delay} seconds (attempt {retry_count}/{max_retries})")
@@ -132,5 +138,10 @@ async def send_screenshots():
             await asyncio.sleep(5)
 
 if __name__ == "__main__":
-    logger.info("OEKS Team Tracker - Staff Application starting...")
-    asyncio.run(send_screenshots()) 
+    try:
+        logger.info("OEKS Team Tracker - Staff Application starting...")
+        asyncio.run(send_screenshots())
+    except KeyboardInterrupt:
+        logger.info("Application stopped by user")
+    except Exception as e:
+        logger.critical(f"Fatal error: {e}")
