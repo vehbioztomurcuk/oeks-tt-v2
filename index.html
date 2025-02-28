@@ -1,56 +1,127 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OEKS Team Tracker Dashboard</title>
+    <title>OEKS Takım İzleme Paneli</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
+        :root {
+            --primary-color: #3498db;
+            --primary-dark: #2980b9;
+            --success-color: #2ecc71;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --background-dark: #1a1a1a;
+            --card-dark: #2d2d2d;
+            --text-light: #f5f5f5;
+            --text-muted: #aaaaaa;
+            --border-dark: #444444;
+            --header-dark: #333333;
         }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--background-dark);
+            color: var(--text-light);
+            margin: 0;
+            padding: 0;
+            transition: background-color 0.3s;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
         .header {
-            background-color: #2c3e50;
+            background-color: var(--header-dark);
             color: white;
-            padding: 15px;
+            padding: 15px 20px;
             margin-bottom: 20px;
             border-radius: 5px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
         }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
         .staff-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
             gap: 20px;
         }
+        
         .staff-card {
-            background-color: white;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            background-color: var(--card-dark);
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
             overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid var(--border-dark);
         }
+        
+        .staff-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+        }
+        
         .staff-header {
-            background-color: #3498db;
+            background-color: var(--primary-color);
             color: white;
-            padding: 10px 15px;
+            padding: 12px 15px;
             display: flex;
             justify-content: space-between;
+            font-weight: 500;
         }
+        
+        .staff-image-container {
+            position: relative;
+            height: 250px;
+            overflow: hidden;
+            background-color: #222;
+        }
+        
         .staff-image {
             width: 100%;
-            height: 300px;
+            height: 100%;
             object-fit: contain;
-            background-color: #e9e9e9;
+            transition: transform 0.3s;
         }
+        
+        .staff-card:hover .staff-image {
+            transform: scale(1.05);
+        }
+        
         .timestamp {
             font-size: 0.8em;
-            text-align: right;
-            padding: 5px 10px;
-            color: #7f8c8d;
+            padding: 10px 15px;
+            color: var(--text-muted);
+            background-color: rgba(0, 0, 0, 0.1);
+            border-top: 1px solid var(--border-dark);
         }
+        
         .status-indicator {
             display: inline-block;
             width: 10px;
@@ -58,55 +129,479 @@
             border-radius: 50%;
             margin-right: 5px;
         }
+        
         .status-active {
-            background-color: #2ecc71;
+            background-color: var(--success-color);
+            box-shadow: 0 0 5px var(--success-color);
         }
+        
         .status-inactive {
-            background-color: #e74c3c;
+            background-color: var(--danger-color);
+            box-shadow: 0 0 5px var(--danger-color);
         }
+        
         .controls {
+            background-color: var(--card-dark);
+            padding: 15px;
             margin-bottom: 20px;
+            border-radius: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--border-dark);
         }
-        button {
-            background-color: #3498db;
+        
+        .filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            flex: 1;
+        }
+        
+        .form-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .form-group label {
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        
+        button, select, input {
+            background-color: #333;
             color: white;
-            border: none;
+            border: 1px solid var(--border-dark);
             padding: 8px 15px;
-            border-radius: 3px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        button {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        button:hover, select:hover {
+            background-color: var(--primary-dark);
+        }
+        
+        button:active {
+            transform: translateY(1px);
+        }
+        
+        select, input {
+            min-width: 150px;
+            background-color: #333;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            font-size: 0.75rem;
+            border-radius: 10px;
+            background-color: var(--primary-color);
+            color: white;
+            margin-left: 5px;
+        }
+        
+        /* Live View Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .modal-content {
+            background-color: var(--card-dark);
+            margin: 20px auto;
+            max-width: 1200px;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            animation: modalFadeIn 0.3s;
+        }
+        
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: translateY(-50px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .modal-header {
+            background-color: var(--primary-color);
+            padding: 15px 20px;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-header h2 {
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
             cursor: pointer;
         }
-        button:hover {
-            background-color: #2980b9;
+        
+        .modal-body {
+            padding: 20px;
+        }
+        
+        .live-view-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .live-image-container {
+            width: 100%;
+            height: 0;
+            padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+            position: relative;
+            background-color: #222;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        .live-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .staff-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        
+        .detail-card {
+            background-color: rgba(0, 0, 0, 0.1);
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid var(--border-dark);
+        }
+        
+        .detail-card h3 {
+            margin-bottom: 10px;
+            font-size: 1rem;
+            color: var(--text-muted);
+        }
+        
+        .detail-card p {
+            font-size: 1.2rem;
+            font-weight: 500;
+        }
+        
+        .history-section {
+            margin-top: 30px;
+        }
+        
+        .history-section h3 {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .history-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 15px;
+        }
+        
+        .history-item {
+            background-color: rgba(0, 0, 0, 0.1);
+            border-radius: 5px;
+            overflow: hidden;
+            border: 1px solid var(--border-dark);
+        }
+        
+        .history-image {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+        }
+        
+        .history-timestamp {
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+        
+        .empty-state {
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+        
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+        
+        .refresh-animation {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Statistics Row */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background-color: var(--card-dark);
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--border-dark);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .stat-icon {
+            font-size: 1.8rem;
+            color: var(--primary-color);
+            background-color: rgba(52, 152, 219, 0.1);
+            padding: 10px;
+            border-radius: 8px;
+        }
+        
+        .stat-info {
+            flex: 1;
+        }
+        
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .staff-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
+            
+            .header {
+                flex-direction: column;
+                text-align: center;
+                gap: 10px;
+            }
+            
+            .header-right {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .stats-row {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>OEKS Team Tracker</h1>
-        <div>
-            <span id="connection-status">⚫ Connecting...</span>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-desktop"></i> OEKS Takım İzleme Paneli</h1>
+            <div class="header-right">
+                <span id="connection-status">⚫ Bağlanıyor...</span>
+            </div>
+        </div>
+        
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-value" id="total-staff">0</div>
+                    <div class="stat-label">Toplam Personel</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-user-check"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-value" id="active-staff">0</div>
+                    <div class="stat-label">Aktif Personel</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-value" id="last-update">-</div>
+                    <div class="stat-label">Son Güncelleme</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-image"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-value" id="total-screenshots">0</div>
+                    <div class="stat-label">Toplam Ekran Görüntüsü</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <div class="filters">
+                <div class="form-group">
+                    <label for="division-filter">Departman:</label>
+                    <select id="division-filter">
+                        <option value="all">Tümü</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="name-filter">Personel:</label>
+                    <select id="name-filter">
+                        <option value="all">Tümü</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="status-filter">Durum:</label>
+                    <select id="status-filter">
+                        <option value="all">Tümü</option>
+                        <option value="active">Aktif</option>
+                        <option value="inactive">İnaktif</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="search-input">Ara:</label>
+                    <input type="text" id="search-input" placeholder="İsim veya departman...">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <button id="refresh-btn"><i class="fas fa-sync-alt"></i> Yenile</button>
+                <select id="refresh-interval">
+                    <option value="3">Otomatik Yenile (3sn)</option>
+                    <option value="5">Otomatik Yenile (5sn)</option>
+                    <option value="10">Otomatik Yenile (10sn)</option>
+                    <option value="30">Otomatik Yenile (30sn)</option>
+                    <option value="0">Manuel Yenileme</option>
+                </select>
+            </div>
+        </div>
+        
+        <div id="staff-grid" class="staff-grid">
+            <!-- Staff screenshots will be displayed here -->
+            <div class="staff-card">
+                <div class="staff-header">
+                    <span><span class="status-indicator status-inactive"></span> Veri Bekleniyor...</span>
+                </div>
+                <div class="empty-state">
+                    <i class="fas fa-spinner refresh-animation"></i>
+                    <p>Henüz bağlı personel yok</p>
+                </div>
+            </div>
         </div>
     </div>
     
-    <div class="controls">
-        <button id="refresh-btn">Refresh Now</button>
-        <select id="refresh-interval">
-            <option value="3">Auto-refresh (3s)</option>
-            <option value="5">Auto-refresh (5s)</option>
-            <option value="10">Auto-refresh (10s)</option>
-            <option value="30">Auto-refresh (30s)</option>
-            <option value="0">Manual refresh</option>
-        </select>
-    </div>
-    
-    <div id="staff-grid" class="staff-grid">
-        <!-- Staff screenshots will be displayed here -->
-        <div class="staff-card">
-            <div class="staff-header">
-                <span><span class="status-indicator status-inactive"></span> Waiting for data...</span>
+    <!-- Live View Modal -->
+    <div id="live-view-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-video"></i> <span id="modal-staff-name">Personel</span> Canlı İzleme</h2>
+                <button class="close-btn" id="close-modal"><i class="fas fa-times"></i></button>
             </div>
-            <div style="padding: 20px; text-align: center;">
-                No staff members connected yet.
+            <div class="modal-body">
+                <div class="live-view-container">
+                    <div class="live-image-container">
+                        <img id="live-image" class="live-image" src="" alt="Canlı görüntü">
+                    </div>
+                    
+                    <div class="staff-details">
+                        <div class="detail-card">
+                            <h3>Personel ID</h3>
+                            <p id="detail-staff-id">-</p>
+                        </div>
+                        <div class="detail-card">
+                            <h3>İsim</h3>
+                            <p id="detail-name">-</p>
+                        </div>
+                        <div class="detail-card">
+                            <h3>Departman</h3>
+                            <p id="detail-division">-</p>
+                        </div>
+                        <div class="detail-card">
+                            <h3>Durum</h3>
+                            <p id="detail-status">-</p>
+                        </div>
+                        <div class="detail-card">
+                            <h3>Son Görüntü</h3>
+                            <p id="detail-last-time">-</p>
+                        </div>
+                        <div class="detail-card">
+                            <h3>Yenileme Aralığı</h3>
+                            <p>
+                                <select id="modal-refresh-interval">
+                                    <option value="1">1 saniye</option>
+                                    <option value="3" selected>3 saniye</option>
+                                    <option value="5">5 saniye</option>
+                                    <option value="10">10 saniye</option>
+                                </select>
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="history-section">
+                        <h3><i class="fas fa-history"></i> Son Görüntüler</h3>
+                        <div id="history-grid" class="history-grid">
+                            <!-- Will be populated with recent screenshots -->
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -116,6 +611,18 @@
         const staffMembers = {};
         let refreshIntervalId = null;
         let refreshRate = 3; // seconds
+        let totalScreenshots = 0;
+        let liveViewStaffId = null;
+        let liveViewIntervalId = null;
+        let liveViewRefreshRate = 3;
+        let divisionsList = new Set();
+        let namesList = new Set();
+        let filters = {
+            division: "all",
+            name: "all",
+            status: "all",
+            search: ""
+        };
         
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -126,9 +633,57 @@
                 setupRefresh();
             });
             
+            // Set up live view refresh interval
+            const modalRefreshSelector = document.getElementById('modal-refresh-interval');
+            modalRefreshSelector.addEventListener('change', () => {
+                liveViewRefreshRate = parseInt(modalRefreshSelector.value);
+                if (liveViewStaffId) {
+                    setupLiveViewRefresh();
+                }
+            });
+            
             // Set up manual refresh button
             document.getElementById('refresh-btn').addEventListener('click', () => {
-                fetchStaffData();
+                const icon = document.querySelector('#refresh-btn i');
+                icon.classList.add('refresh-animation');
+                fetchStaffData().finally(() => {
+                    setTimeout(() => {
+                        icon.classList.remove('refresh-animation');
+                    }, 500);
+                });
+            });
+            
+            // Set up filters
+            document.getElementById('division-filter').addEventListener('change', (e) => {
+                filters.division = e.target.value;
+                applyFilters();
+            });
+            
+            document.getElementById('name-filter').addEventListener('change', (e) => {
+                filters.name = e.target.value;
+                applyFilters();
+            });
+            
+            document.getElementById('status-filter').addEventListener('change', (e) => {
+                filters.status = e.target.value;
+                applyFilters();
+            });
+            
+            document.getElementById('search-input').addEventListener('input', (e) => {
+                filters.search = e.target.value.toLowerCase();
+                applyFilters();
+            });
+            
+            // Set up modal close button
+            document.getElementById('close-modal').addEventListener('click', () => {
+                closeModal();
+            });
+            
+            // Close modal on outside click
+            window.addEventListener('click', (e) => {
+                if (e.target === document.getElementById('live-view-modal')) {
+                    closeModal();
+                }
             });
             
             // Initial setup
@@ -148,27 +703,283 @@
             }
         }
         
+        // Setup live view refresh
+        function setupLiveViewRefresh() {
+            if (liveViewIntervalId) {
+                clearInterval(liveViewIntervalId);
+                liveViewIntervalId = null;
+            }
+            
+            if (liveViewStaffId) {
+                updateLiveView();
+                liveViewIntervalId = setInterval(updateLiveView, liveViewRefreshRate * 1000);
+            }
+        }
+        
+        // Update live view
+        function updateLiveView() {
+            if (!liveViewStaffId) return;
+            
+            const staff = staffMembers[liveViewStaffId];
+            if (!staff) return;
+            
+            const now = new Date();
+            const timestamp = now.getTime();
+            const path = `${staff.path}?t=${timestamp}`;
+            
+            const liveImage = document.getElementById('live-image');
+            liveImage.src = path;
+            
+            document.getElementById('detail-last-time').textContent = `${formatTimeDiff(now, new Date(staff.timestamp))} önce`;
+        }
+        
+        // Open modal with staff data
+        function openModal(staffId) {
+            liveViewStaffId = staffId;
+            const staff = staffMembers[staffId];
+            
+            document.getElementById('modal-staff-name').textContent = staff.name;
+            document.getElementById('detail-staff-id').textContent = staffId;
+            document.getElementById('detail-name').textContent = staff.name;
+            document.getElementById('detail-division').textContent = staff.division;
+            
+            const now = new Date();
+            const screenshotTime = new Date(staff.timestamp);
+            const timeDiff = Math.round((now - screenshotTime) / 1000);
+            const isActive = timeDiff < 60;
+            
+            document.getElementById('detail-status').textContent = isActive ? 'Aktif' : 'İnaktif';
+            document.getElementById('detail-status').style.color = isActive ? 'var(--success-color)' : 'var(--danger-color)';
+            document.getElementById('detail-last-time').textContent = `${formatTimeDiff(now, screenshotTime)} önce`;
+            
+            // Clear history grid and update with data as available
+            const historyGrid = document.getElementById('history-grid');
+            historyGrid.innerHTML = '<div class="empty-state"><i class="fas fa-spinner refresh-animation"></i><p>Geçmiş yükleniyor...</p></div>';
+            
+            // Set initial live image
+            const liveImage = document.getElementById('live-image');
+            liveImage.src = `${staff.path}?t=${now.getTime()}`;
+            
+            // Show modal
+            document.getElementById('live-view-modal').style.display = 'block';
+            
+            // Start refresh
+            setupLiveViewRefresh();
+            
+            // Fetch history (this would need server-side support)
+            // For now we can simulate with the single current screenshot
+            setTimeout(() => {
+                historyGrid.innerHTML = '';
+                // Add the current screenshot for demonstration
+                const historyItem = document.createElement('div');
+                historyItem.className = 'history-item';
+                historyItem.innerHTML = `
+                    <img class="history-image" src="${staff.path}?t=${now.getTime()}" alt="Ekran görüntüsü">
+                    <div class="history-timestamp">${screenshotTime.toLocaleTimeString()}</div>
+                `;
+                historyGrid.appendChild(historyItem);
+            }, 1000);
+        }
+        
+        // Close modal
+        function closeModal() {
+            document.getElementById('live-view-modal').style.display = 'none';
+            if (liveViewIntervalId) {
+                clearInterval(liveViewIntervalId);
+                liveViewIntervalId = null;
+            }
+            liveViewStaffId = null;
+        }
+        
+        // Format time difference in a user-friendly way
+        function formatTimeDiff(now, then) {
+            const diff = Math.round((now - then) / 1000);
+            if (diff < 60) return `${diff} saniye`;
+            if (diff < 3600) return `${Math.floor(diff / 60)} dakika`;
+            return `${Math.floor(diff / 3600)} saat`;
+        }
+        
+        // Apply filters to staff grid
+        function applyFilters() {
+            const staffCards = document.querySelectorAll('.staff-card');
+            let visibleCount = 0;
+            
+            staffCards.forEach(card => {
+                const staffId = card.id.replace('staff-', '');
+                const staff = staffMembers[staffId];
+                
+                if (!staff) {
+                    card.style.display = 'none';
+                    return;
+                }
+                
+                const now = new Date();
+                const timestamp = new Date(staff.timestamp);
+                const timeDiff = Math.round((now - timestamp) / 1000);
+                const isActive = timeDiff < 60;
+                
+                // Apply division filter
+                const divisionMatch = filters.division === 'all' || staff.division === filters.division;
+                
+                // Apply name filter
+                const nameMatch = filters.name === 'all' || staff.name === filters.name;
+                
+                // Apply status filter
+                const statusMatch = filters.status === 'all' || 
+                                   (filters.status === 'active' && isActive) || 
+                                   (filters.status === 'inactive' && !isActive);
+                
+                // Apply search filter
+                const searchMatch = filters.search === '' || 
+                                    staff.name.toLowerCase().includes(filters.search) || 
+                                    staff.division.toLowerCase().includes(filters.search) ||
+                                    staffId.toLowerCase().includes(filters.search);
+                
+                // Show/hide based on filters
+                if (divisionMatch && nameMatch && statusMatch && searchMatch) {
+                    card.style.display = '';
+                    visibleCount++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+            
+            // Show empty state if no cards visible
+            if (visibleCount === 0 && Object.keys(staffMembers).length > 0) {
+                const staffGrid = document.getElementById('staff-grid');
+                
+                // Only add empty state if it doesn't already exist
+                if (!document.querySelector('.empty-filter-state')) {
+                    staffGrid.innerHTML += `
+                        <div class="empty-state empty-filter-state">
+                            <i class="fas fa-filter"></i>
+                            <p>Mevcut filtrelerle eşleşen personel bulunamadı</p>
+                            <button id="reset-filters-btn" style="margin-top: 15px;">
+                                <i class="fas fa-times"></i> Filtreleri Temizle
+                            </button>
+                        </div>
+                    `;
+                    
+                    document.getElementById('reset-filters-btn').addEventListener('click', resetFilters);
+                }
+            } else {
+                // Remove empty filter state if it exists
+                const emptyState = document.querySelector('.empty-filter-state');
+                if (emptyState) {
+                    emptyState.remove();
+                }
+            }
+        }
+        
+        // Reset all filters
+        function resetFilters() {
+            document.getElementById('division-filter').value = 'all';
+            document.getElementById('name-filter').value = 'all';
+            document.getElementById('status-filter').value = 'all';
+            document.getElementById('search-input').value = '';
+            
+            filters = {
+                division: 'all',
+                name: 'all',
+                status: 'all',
+                search: ''
+            };
+            
+            applyFilters();
+        }
+        
+        // Update filter dropdowns
+        function updateFilterOptions() {
+            const divisionDropdown = document.getElementById('division-filter');
+            const nameDropdown = document.getElementById('name-filter');
+            
+            // Save current selections
+            const currentDivision = divisionDropdown.value;
+            const currentName = nameDropdown.value;
+            
+            // Clear current options (except "All")
+            while (divisionDropdown.options.length > 1) {
+                divisionDropdown.remove(1);
+            }
+            
+            while (nameDropdown.options.length > 1) {
+                nameDropdown.remove(1);
+            }
+            
+            // Add new options
+            divisionsList.forEach(division => {
+                const option = document.createElement('option');
+                option.value = division;
+                option.textContent = division;
+                divisionDropdown.appendChild(option);
+            });
+            
+            namesList.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                nameDropdown.appendChild(option);
+            });
+            
+            // Restore selections if they still exist
+            if ([...divisionDropdown.options].some(opt => opt.value === currentDivision)) {
+                divisionDropdown.value = currentDivision;
+            }
+            
+            if ([...nameDropdown.options].some(opt => opt.value === currentName)) {
+                nameDropdown.value = currentName;
+            }
+        }
+        
+        // Update statistics
+        function updateStats(data) {
+            const now = new Date();
+            let activeCount = 0;
+            
+            // Count active staff
+            data.staffList.forEach(staffId => {
+                const staff = data.latestScreenshots[staffId];
+                const timestamp = new Date(staff.timestamp);
+                const timeDiff = Math.round((now - timestamp) / 1000);
+                if (timeDiff < 60) activeCount++;
+            });
+            
+            document.getElementById('total-staff').textContent = data.staffList.length.toString();
+            document.getElementById('active-staff').textContent = activeCount.toString();
+            document.getElementById('last-update').textContent = now.toLocaleTimeString();
+            document.getElementById('total-screenshots').textContent = totalScreenshots.toString();
+        }
+        
         // Fetch staff data from the server
         function fetchStaffData() {
             const connectionStatus = document.getElementById('connection-status');
-            connectionStatus.textContent = '🔄 Refreshing...';
+            connectionStatus.textContent = '🔄 Yenileniyor...';
             
             // Get list of staff directories
-            fetch('/api/staff-list')
+            return fetch('/api/staff-list')
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error('Network response was not ok');
+                        throw new Error('İstek başarısız oldu');
                     }
                     return response.json();
                 })
                 .then(data => {
+                    // Update stats
+                    updateStats(data);
+                    
                     // Update the dashboard with new data
                     updateDashboard(data);
-                    connectionStatus.innerHTML = '🟢 Connected';
+                    
+                    // Update live view if open
+                    if (liveViewStaffId) {
+                        updateLiveView();
+                    }
+                    
+                    connectionStatus.innerHTML = '🟢 Bağlı';
                 })
                 .catch(error => {
-                    console.error('Error fetching staff data:', error);
-                    connectionStatus.innerHTML = '🔴 Connection Error';
+                    console.error('Veri çekme hatası:', error);
+                    connectionStatus.innerHTML = '🔴 Bağlantı Hatası';
                     
                     // If API isn't available yet, fallback to directory scan
                     fallbackToDirectoryScan();
@@ -183,11 +994,15 @@
                 latestScreenshots: {
                     'demo_user_1': {
                         path: '/screenshots/demo_user_1/latest.jpg',
-                        timestamp: new Date().toISOString()
+                        timestamp: new Date().toISOString(),
+                        name: "Demo Kullanıcı 1",
+                        division: "Pazarlama"
                     },
                     'demo_user_2': {
                         path: '/screenshots/demo_user_2/latest.jpg',
-                        timestamp: new Date(Date.now() - 30000).toISOString()
+                        timestamp: new Date(Date.now() - 30000).toISOString(),
+                        name: "Demo Kullanıcı 2",
+                        division: "Satış"
                     }
                 }
             };
@@ -199,9 +1014,31 @@
         function updateDashboard(data) {
             const staffGrid = document.getElementById('staff-grid');
             
+            // Clear lists of divisions and names for filters
+            divisionsList.clear();
+            namesList.clear();
+            
+            // Store data in our staffMembers object and collect division/name data
+            data.staffList.forEach(staffId => {
+                const screenshotInfo = data.latestScreenshots[staffId];
+                staffMembers[staffId] = screenshotInfo;
+                
+                // Add to filter lists
+                if (screenshotInfo.division) {
+                    divisionsList.add(screenshotInfo.division);
+                }
+                if (screenshotInfo.name) {
+                    namesList.add(screenshotInfo.name);
+                }
+            });
+            
+            // Update filter dropdowns
+            updateFilterOptions();
+            
             // Clear the grid if we have staff members
             if (data.staffList && data.staffList.length > 0) {
                 staffGrid.innerHTML = '';
+                totalScreenshots = data.staffList.length;
             }
             
             // Add staff cards
@@ -210,6 +1047,13 @@
                 const timestamp = new Date(screenshotInfo.timestamp);
                 const now = new Date();
                 const timeDiff = Math.round((now - timestamp) / 1000); // in seconds
+                
+                // Get name and division with fallbacks
+                const name = screenshotInfo.name || "Bilinmeyen Kullanıcı";
+                const division = screenshotInfo.division || "Tanımlanmamış";
+                
+                // Store path in our staffMembers object
+                staffMembers[staffId].path = screenshotInfo.path;
                 
                 // Determine if staff is active (screenshot in last minute)
                 const isActive = timeDiff < 60;
@@ -222,7 +1066,13 @@
                     staffCard = document.createElement('div');
                     staffCard.id = `staff-${staffId}`;
                     staffCard.className = 'staff-card';
+                    staffCard.dataset.staffId = staffId;
                     staffGrid.appendChild(staffCard);
+                    
+                    // Add click event to open live view
+                    staffCard.addEventListener('click', () => {
+                        openModal(staffId);
+                    });
                 }
                 
                 // Update card content
@@ -230,17 +1080,113 @@
                     <div class="staff-header">
                         <span>
                             <span class="status-indicator ${isActive ? 'status-active' : 'status-inactive'}"></span>
-                            ${staffId}
+                            <strong>${name}</strong> <span class="badge">${division}</span>
                         </span>
-                        <span>${timeDiff}s ago</span>
+                        <span>${formatTimeDiff(now, timestamp)} önce</span>
                     </div>
-                    <img class="staff-image" src="${screenshotInfo.path}?t=${Date.now()}" alt="Screenshot from ${staffId}" onerror="this.src='data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw=='" />
+                    <div class="staff-image-container">
+                        <img class="staff-image" src="${screenshotInfo.path}?t=${Date.now()}" 
+                             alt="${name} ekran görüntüsü" 
+                             onerror="this.src='data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw=='" />
+                    </div>
                     <div class="timestamp">
-                        ${timestamp.toLocaleString()}
+                        <span>${staffId}</span> - ${timestamp.toLocaleString('tr-TR')}
                     </div>
                 `;
             });
+            
+            // After updating all cards, apply filters
+            applyFilters();
         }
+        
+        // WebSocket connection for real-time updates
+        let socket;
+        
+        function connectWebSocket() {
+            // Close any existing connections
+            if (socket && socket.readyState !== WebSocket.CLOSED) {
+                socket.close();
+            }
+            
+            // Create new WebSocket connection
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                console.log('WebSocket bağlantısı kuruldu');
+                document.getElementById('connection-status').innerHTML = '🟢 Bağlı (Canlı)';
+            };
+            
+            socket.onmessage = (event) => {
+                // Handle real-time updates
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'screenshot_update') {
+                        // Update specific staff card
+                        const staffId = data.staffId;
+                        const info = data.screenshotInfo;
+                        
+                        // Update staffMembers object
+                        staffMembers[staffId] = info;
+                        
+                        // Update card if visible
+                        const staffCard = document.getElementById(`staff-${staffId}`);
+                        if (staffCard) {
+                            const timestamp = new Date(info.timestamp);
+                            const now = new Date();
+                            const isActive = (now - timestamp) / 1000 < 60;
+                            
+                            staffCard.querySelector('.staff-header').innerHTML = `
+                                <span>
+                                    <span class="status-indicator ${isActive ? 'status-active' : 'status-inactive'}"></span>
+                                    <strong>${info.name || "Bilinmeyen Kullanıcı"}</strong> 
+                                    <span class="badge">${info.division || "Tanımlanmamış"}</span>
+                                </span>
+                                <span>${formatTimeDiff(now, timestamp)} önce</span>
+                            `;
+                            
+                            staffCard.querySelector('.staff-image').src = `${info.path}?t=${Date.now()}`;
+                            staffCard.querySelector('.timestamp').innerHTML = `
+                                <span>${staffId}</span> - ${timestamp.toLocaleString('tr-TR')}
+                            `;
+                            
+                            // If this staff member is being viewed in live view, update that too
+                            if (liveViewStaffId === staffId) {
+                                updateLiveView();
+                            }
+                            
+                            // Increment screenshot count
+                            totalScreenshots++;
+                            document.getElementById('total-screenshots').textContent = totalScreenshots.toString();
+                            
+                            // Update last update time
+                            document.getElementById('last-update').textContent = now.toLocaleTimeString();
+                        }
+                    }
+                } catch (error) {
+                    console.error('WebSocket mesajı işlenirken hata:', error);
+                }
+            };
+            
+            socket.onclose = (event) => {
+                console.log('WebSocket bağlantısı kapandı:', event.code, event.reason);
+                document.getElementById('connection-status').innerHTML = '🟠 Yeniden bağlanıyor...';
+                
+                // Attempt to reconnect after a delay
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            socket.onerror = (error) => {
+                console.error('WebSocket hatası:', error);
+                document.getElementById('connection-status').innerHTML = '🔴 Bağlantı Hatası';
+            };
+        }
+        
+        // Initial WebSocket connection
+        connectWebSocket();
     </script>
 </body>
-</html> 
+</html>

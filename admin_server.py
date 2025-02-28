@@ -81,6 +81,19 @@ class HTTPHandler(BaseHTTPRequestHandler):
                     if os.path.isdir(staff_dir):
                         staff_list.append(staff_id)
                         
+                        # Get staff metadata if available
+                        name = "Unknown User"
+                        division = "Unassigned"
+                        metadata_file = os.path.join(staff_dir, "metadata.json")
+                        if os.path.exists(metadata_file):
+                            try:
+                                with open(metadata_file, "r") as f:
+                                    staff_metadata = json.load(f)
+                                    name = staff_metadata.get("name", name)
+                                    division = staff_metadata.get("division", division)
+                            except (json.JSONDecodeError, IOError) as e:
+                                logger.error(f"Error reading metadata for {staff_id}: {e}")
+                        
                         # Find the latest screenshot for this staff member
                         screenshot_files = [f for f in os.listdir(staff_dir) if f.endswith('.jpg')]
                         
@@ -109,7 +122,9 @@ class HTTPHandler(BaseHTTPRequestHandler):
                             
                             latest_screenshots[staff_id] = {
                                 "path": f"/screenshots/{staff_id}/latest.jpg",
-                                "timestamp": mod_time
+                                "timestamp": mod_time,
+                                "name": name,
+                                "division": division
                             }
             
             # If no staff members yet, add some demo data
@@ -118,11 +133,15 @@ class HTTPHandler(BaseHTTPRequestHandler):
                 latest_screenshots = {
                     'demo_user_1': {
                         "path": "/screenshots/demo_user_1/latest.jpg",
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": datetime.now().isoformat(),
+                        "name": "Unknown User",
+                        "division": "Unassigned"
                     },
                     'demo_user_2': {
                         "path": "/screenshots/demo_user_2/latest.jpg",
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": datetime.now().isoformat(),
+                        "name": "Unknown User",
+                        "division": "Unassigned"
                     }
                 }
             
@@ -182,13 +201,15 @@ class HTTPHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         logger.info("%s - %s" % (self.address_string(), format % args))
 
-# WebSocket server handler - FIXED SIGNATURE
+# WebSocket server handler
 async def handle_client(websocket):
     config = load_config()
     api_key = config["api_key"]
     screenshots_dir = config["screenshots_dir"]
     
     staff_id = None
+    name = None
+    division = None
     authenticated = False
     
     try:
@@ -199,12 +220,14 @@ async def handle_client(websocket):
         if data.get("type") == "auth":
             if data.get("api_key") == api_key:
                 staff_id = data.get("staff_id")
+                name = data.get("name", "Unknown User")
+                division = data.get("division", "Unassigned")
                 authenticated = True
                 await websocket.send(json.dumps({
                     "status": "authenticated",
                     "message": "Authentication successful"
                 }))
-                logger.info(f"Staff member {staff_id} authenticated")
+                logger.info(f"Staff member {name} ({staff_id}) from {division} authenticated")
             else:
                 await websocket.send(json.dumps({
                     "status": "error",
@@ -219,6 +242,18 @@ async def handle_client(websocket):
         # Ensure staff directory exists
         staff_dir = ensure_directories(screenshots_dir, staff_id)
         
+        # Create metadata file if it doesn't exist
+        metadata_file = os.path.join(staff_dir, "metadata.json")
+        staff_metadata = {
+            "staff_id": staff_id,
+            "name": name,
+            "division": division,
+            "last_connected": datetime.now().isoformat()
+        }
+        
+        with open(metadata_file, "w") as f:
+            json.dump(staff_metadata, f, indent=4)
+        
         # Main message loop
         while True:
             # Receive metadata first
@@ -227,7 +262,7 @@ async def handle_client(websocket):
             
             if metadata.get("type") == "metadata":
                 timestamp = metadata.get("timestamp")
-                logger.debug(f"Preparing to receive image from {staff_id}, timestamp: {timestamp}")
+                logger.debug(f"Preparing to receive image from {name} ({staff_id}) in {division}, timestamp: {timestamp}")
                 
                 # Receive the actual image
                 image_data = await websocket.recv()
@@ -240,7 +275,7 @@ async def handle_client(websocket):
                 with open(filepath, "wb") as f:
                     f.write(image_data)
                 
-                logger.info(f"Screenshot saved from {staff_id} ({len(image_data)/1024:.1f} KB)")
+                logger.info(f"Screenshot saved from {name} ({staff_id}) in {division} ({len(image_data)/1024:.1f} KB)")
                 
     except websockets.exceptions.ConnectionClosed:
         logger.info(f"Connection closed for staff {staff_id}")
@@ -286,7 +321,7 @@ async def run_server():
     http_server = HTTPServerThread(host, http_port)
     http_server.start()
     
-    # Start WebSocket server - FIXED CALL
+    # Start WebSocket server
     stop = asyncio.Future()
     async with websockets.serve(handle_client, host, ws_port):
         logger.info(f"WebSocket server started on ws://{host}:{ws_port}")

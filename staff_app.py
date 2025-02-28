@@ -31,6 +31,8 @@ def load_config():
             "admin_ws_url": "ws://localhost:8765",  # Change this to admin PC IP
             "api_key": "default_key_change_me",
             "staff_id": f"{hostname}_{uuid.uuid4().hex[:8]}",
+            "name": "Unknown User",
+            "division": "Unassigned",
             "screenshot_interval": 3,
             "jpeg_quality": 30
         }
@@ -66,6 +68,8 @@ async def send_screenshots():
     admin_ws_url = config["admin_ws_url"]
     api_key = config["api_key"]
     staff_id = config["staff_id"]
+    name = config.get("name", "Unknown User")  # Get name with fallback
+    division = config.get("division", "Unassigned")  # Get division with fallback
     interval = config["screenshot_interval"]
     quality = config["jpeg_quality"]
     
@@ -84,7 +88,9 @@ async def send_screenshots():
                 auth_message = json.dumps({
                     "type": "auth",
                     "api_key": api_key,
-                    "staff_id": staff_id
+                    "staff_id": staff_id,
+                    "name": name,
+                    "division": division
                 })
                 await websocket.send(auth_message)
                 response = await websocket.recv()
@@ -107,6 +113,8 @@ async def send_screenshots():
                         metadata = json.dumps({
                             "type": "metadata",
                             "staff_id": staff_id,
+                            "name": name,
+                            "division": division,
                             "timestamp": timestamp,
                             "size": len(screenshot)
                         })
