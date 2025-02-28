@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OEKS Team Tracker Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .staff-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 20px;
+        }
+        .staff-card {
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        .staff-header {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .staff-image {
+            width: 100%;
+            height: 300px;
+            object-fit: contain;
+            background-color: #e9e9e9;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            text-align: right;
+            padding: 5px 10px;
+            color: #7f8c8d;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-active {
+            background-color: #2ecc71;
+        }
+        .status-inactive {
+            background-color: #e74c3c;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>OEKS Team Tracker</h1>
+        <div>
+            <span id="connection-status">⚫ Connecting...</span>
+        </div>
+    </div>
+    
+    <div class="controls">
+        <button id="refresh-btn">Refresh Now</button>
+        <select id="refresh-interval">
+            <option value="3">Auto-refresh (3s)</option>
+            <option value="5">Auto-refresh (5s)</option>
+            <option value="10">Auto-refresh (10s)</option>
+            <option value="30">Auto-refresh (30s)</option>
+            <option value="0">Manual refresh</option>
+        </select>
+    </div>
+    
+    <div id="staff-grid" class="staff-grid">
+        <!-- Staff screenshots will be displayed here -->
+        <div class="staff-card">
+            <div class="staff-header">
+                <span><span class="status-indicator status-inactive"></span> Waiting for data...</span>
+            </div>
+            <div style="padding: 20px; text-align: center;">
+                No staff members connected yet.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Store staff data
+        const staffMembers = {};
+        let refreshIntervalId = null;
+        let refreshRate = 3; // seconds
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Set up refresh interval selector
+            const refreshSelector = document.getElementById('refresh-interval');
+            refreshSelector.addEventListener('change', () => {
+                refreshRate = parseInt(refreshSelector.value);
+                setupRefresh();
+            });
+            
+            // Set up manual refresh button
+            document.getElementById('refresh-btn').addEventListener('click', () => {
+                fetchStaffData();
+            });
+            
+            // Initial setup
+            setupRefresh();
+            fetchStaffData();
+        });
+        
+        // Setup auto-refresh
+        function setupRefresh() {
+            if (refreshIntervalId) {
+                clearInterval(refreshIntervalId);
+                refreshIntervalId = null;
+            }
+            
+            if (refreshRate > 0) {
+                refreshIntervalId = setInterval(fetchStaffData, refreshRate * 1000);
+            }
+        }
+        
+        // Fetch staff data from the server
+        function fetchStaffData() {
+            const connectionStatus = document.getElementById('connection-status');
+            connectionStatus.textContent = '🔄 Refreshing...';
+            
+            // Get list of staff directories
+            fetch('/api/staff-list')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Update the dashboard with new data
+                    updateDashboard(data);
+                    connectionStatus.innerHTML = '🟢 Connected';
+                })
+                .catch(error => {
+                    console.error('Error fetching staff data:', error);
+                    connectionStatus.innerHTML = '🔴 Connection Error';
+                    
+                    // If API isn't available yet, fallback to filesystem scanning
+                    fallbackToDirectoryScan();
+                });
+        }
+        
+        // Fallback to directory scan if API isn't available
+        function fallbackToDirectoryScan() {
+            // This is a simplified version that just scans the screenshots directory
+            // In a real implementation, you might need server-side code to list directories
+            
+            // For demonstration, let's use some placeholder data
+            const demoData = {
+                staffList: ['demo_user_1', 'demo_user_2'],
+                latestScreenshots: {
+                    'demo_user_1': {
+                        path: 'screenshots/demo_user_1/latest.jpg',
+                        timestamp: new Date().toISOString()
+                    },
+                    'demo_user_2': {
+                        path: 'screenshots/demo_user_2/latest.jpg',
+                        timestamp: new Date(Date.now() - 30000).toISOString()
+                    }
+                }
+            };
+            
+            updateDashboard(demoData);
+        }
+        
+        // Update the dashboard with new data
+        function updateDashboard(data) {
+            const staffGrid = document.getElementById('staff-grid');
+            
+            // Clear the grid if we have staff members
+            if (data.staffList && data.staffList.length > 0) {
+                staffGrid.innerHTML = '';
+            }
+            
+            // Add staff cards
+            data.staffList.forEach(staffId => {
+                const screenshotInfo = data.latestScreenshots[staffId];
+                const timestamp = new Date(screenshotInfo.timestamp);
+                const now = new Date();
+                const timeDiff = Math.round((now - timestamp) / 1000); // in seconds
+                
+                // Determine if staff is active (screenshot in last minute)
+                const isActive = timeDiff < 60;
+                
+                // Create or update staff card
+                let staffCard = document.getElementById(`staff-${staffId}`);
+                
+                if (!staffCard) {
+                    // Create new card
+                    staffCard = document.createElement('div');
+                    staffCard.id = `staff-${staffId}`;
+                    staffCard.className = 'staff-card';
+                    staffGrid.appendChild(staffCard);
+                }
+                
+                // Update card content
+                staffCard.innerHTML = `
+                    <div class="staff-header">
+                        <span>
+                            <span class="status-indicator ${isActive ? 'status-active' : 'status-inactive'}"></span>
+                            ${staffId}
+                        </span>
+                        <span>${timeDiff}s ago</span>
+                    </div>
+                    <img class="staff-image" src="${screenshotInfo.path}?t=${Date.now()}" alt="Screenshot from ${staffId}" />
+                    <div class="timestamp">
+                        ${timestamp.toLocaleString()}
+                    </div>
+                `;
+            });
+        }
+    </script>
+</body>
+</html> 

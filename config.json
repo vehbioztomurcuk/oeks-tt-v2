@@ -1,0 +1,7 @@
+{
+    "admin_ws_url": "ws://ADMIN_IP:8765",
+    "api_key": "your_secret_key_here",
+    "staff_id": "staff_1",
+    "screenshot_interval": 3,
+    "jpeg_quality": 30
+} 

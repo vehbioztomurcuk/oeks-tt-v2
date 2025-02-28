@@ -1,0 +1,136 @@
+import asyncio
+import json
+import logging
+import os
+import time
+import uuid
+from datetime import datetime
+from io import BytesIO
+from PIL import Image
+import websockets
+import mss
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('staff_app')
+
+# Load configuration
+def load_config():
+    try:
+        with open('config.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        logger.error("Configuration file not found. Creating default config.")
+        default_config = {
+            "admin_ws_url": "ws://localhost:8765",
+            "api_key": "default_key_change_me",
+            "staff_id": f"staff_{uuid.uuid4().hex[:8]}",
+            "screenshot_interval": 3,
+            "jpeg_quality": 30
+        }
+        with open('config.json', 'w') as f:
+            json.dump(default_config, f, indent=4)
+        return default_config
+
+# Screenshot capture function
+def capture_screenshot(quality=30):
+    try:
+        with mss.mss() as sct:
+            monitor = sct.monitors[1]  # Primary monitor
+            sct_img = sct.grab(monitor)
+            img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+            
+            # Resize to reduce size (optional)
+            width, height = img.size
+            new_width = min(1280, width)
+            new_height = int(height * (new_width / width))
+            img = img.resize((new_width, new_height), Image.LANCZOS)
+            
+            # Convert to bytes
+            buffer = BytesIO()
+            img.save(buffer, format="JPEG", quality=quality)
+            return buffer.getvalue()
+    except Exception as e:
+        logger.error(f"Screenshot capture failed: {e}")
+        return None
+
+# WebSocket client with retry mechanism
+async def send_screenshots():
+    config = load_config()
+    admin_ws_url = config["admin_ws_url"]
+    api_key = config["api_key"]
+    staff_id = config["staff_id"]
+    interval = config["screenshot_interval"]
+    quality = config["jpeg_quality"]
+    
+    retry_count = 0
+    max_retries = 5
+    base_delay = 1
+    
+    while True:
+        try:
+            async with websockets.connect(admin_ws_url) as websocket:
+                logger.info(f"Connected to admin server at {admin_ws_url}")
+                retry_count = 0  # Reset retry count on successful connection
+                
+                # Authentication
+                auth_message = json.dumps({
+                    "type": "auth",
+                    "api_key": api_key,
+                    "staff_id": staff_id
+                })
+                await websocket.send(auth_message)
+                response = await websocket.recv()
+                auth_response = json.loads(response)
+                
+                if auth_response.get("status") != "authenticated":
+                    logger.error(f"Authentication failed: {auth_response.get('message')}")
+                    break
+                
+                logger.info("Authentication successful")
+                
+                # Main screenshot loop
+                while True:
+                    screenshot = capture_screenshot(quality)
+                    if screenshot:
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        
+                        # Send metadata first
+                        metadata = json.dumps({
+                            "type": "metadata",
+                            "staff_id": staff_id,
+                            "timestamp": timestamp,
+                            "size": len(screenshot)
+                        })
+                        await websocket.send(metadata)
+                        
+                        # Then send the actual image
+                        await websocket.send(screenshot)
+                        logger.info(f"Screenshot sent successfully ({len(screenshot)/1024:.1f} KB)")
+                    
+                    await asyncio.sleep(interval)
+                    
+        except (websockets.exceptions.ConnectionClosed, 
+                websockets.exceptions.WebSocketException,
+                ConnectionRefusedError) as e:
+            retry_count += 1
+            delay = min(60, base_delay * (2 ** retry_count))  # Exponential backoff
+            logger.error(f"Connection error: {e}. Retrying in {delay} seconds (attempt {retry_count}/{max_retries})")
+            
+            if retry_count >= max_retries:
+                logger.critical(f"Max retries reached. Waiting 60 seconds before trying again.")
+                retry_count = 0
+                await asyncio.sleep(60)
+            else:
+                await asyncio.sleep(delay)
+        
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
+            await asyncio.sleep(5)
+
+if __name__ == "__main__":
+    logger.info("OEKS Team Tracker - Staff Application starting...")
+    asyncio.run(send_screenshots()) 
