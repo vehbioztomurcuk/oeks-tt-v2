@@ -100,12 +100,12 @@ def get_video_filename(staff_id):
 class VideoRecorder:
     def __init__(self, staff_id, output_dir="videos", fps=1, quality=23):
         self.staff_id = staff_id
-        self.output_dir = output_dir
+        self.output_dir = os.path.join(os.getcwd(), output_dir)  # Use absolute path
         self.fps = fps
-        self.quality = quality  # Higher number = lower quality (23 is a good balance)
+        self.quality = quality
         self.writer = None
         self.current_date = None
-        self.target_height = 1080  # Standard height for all frames
+        self.target_height = 1080
         os.makedirs(output_dir, exist_ok=True)
     
     def ensure_writer(self):
@@ -120,15 +120,22 @@ class VideoRecorder:
             filename = get_video_filename(self.staff_id)
             filepath = os.path.join(self.output_dir, filename)
             
-            # Use MJPG codec instead of H264
-            fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+            # Use mp4v codec which is more widely supported
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            
+            # Create writer with lower resolution for better performance
             self.writer = cv2.VideoWriter(
                 filepath,
                 fourcc,
                 self.fps,
-                (1920, 1080),  # Standard resolution
+                (1280, 720),  # Reduced resolution
                 True  # Color
             )
+            
+            if not self.writer.isOpened():
+                logger.error("Failed to create video writer")
+                return False
+                
             self.current_date = current_date
             logger.info(f"Started new video file: {filename}")
             return True
@@ -138,36 +145,31 @@ class VideoRecorder:
         """Capture frame from screen and return success status"""
         try:
             with mss.mss() as sct:
-                monitors = sct.monitors[1:]  # Skip index 0
+                monitors = sct.monitors[1:]
                 
                 if len(monitors) == 1:
-                    # Single monitor setup
                     monitor = monitors[0]
                     screen = np.array(sct.grab(monitor))
                     frame = cv2.cvtColor(screen, cv2.COLOR_BGRA2BGR)
                 else:
-                    # Multiple monitor setup - resize before combining
                     frames = []
                     for monitor in monitors:
                         screen = np.array(sct.grab(monitor))
                         frame = cv2.cvtColor(screen, cv2.COLOR_BGRA2BGR)
-                        # Calculate new width while maintaining aspect ratio
                         aspect_ratio = frame.shape[1] / frame.shape[0]
                         new_width = int(self.target_height * aspect_ratio)
-                        # Resize frame
                         frame = cv2.resize(frame, (new_width, self.target_height))
                         frames.append(frame)
                     
-                    # Combine resized frames horizontally
                     frame = np.hstack(frames)
                 
-                # Ensure final frame is at target resolution
-                frame = cv2.resize(frame, (1920, 1080))
+                # Resize to 720p for better performance
+                frame = cv2.resize(frame, (1280, 720))
                 
-                # Write frame
-                self.ensure_writer()
-                self.writer.write(frame)
-                return True
+                if self.writer and self.writer.isOpened():
+                    self.writer.write(frame)
+                    return True
+                return False
                 
         except Exception as e:
             logger.error(f"Frame capture failed: {e}")
@@ -178,7 +180,7 @@ class VideoRecorder:
         if self.writer:
             self.writer.release()
 
-# Modified screenshot capture function to use video recorder
+# Modified send_screenshots function to handle WebSocket connections better
 async def send_screenshots():
     config = load_config()
     admin_ws_url = config["admin_ws_url"]
@@ -187,9 +189,7 @@ async def send_screenshots():
     name = config.get("name", "Unknown User")
     division = config.get("division", "Unassigned")
     
-    # Initialize video recorder
     recorder = VideoRecorder(staff_id)
-    
     retry_count = 0
     max_retries = 5
     base_delay = 1
@@ -197,7 +197,8 @@ async def send_screenshots():
     while True:
         try:
             logger.info(f"Connecting to admin server at {admin_ws_url}...")
-            async with websockets.connect(admin_ws_url) as websocket:
+            
+            async with websockets.connect(admin_ws_url, ping_interval=20, ping_timeout=60) as websocket:
                 logger.info("Connected to admin server")
                 retry_count = 0
                 
@@ -210,48 +211,47 @@ async def send_screenshots():
                     "division": division
                 })
                 await websocket.send(auth_message)
-                response = await websocket.recv()
-                auth_response = json.loads(response)
                 
-                if auth_response.get("status") != "authenticated":
-                    logger.error(f"Authentication failed: {auth_response.get('message')}")
-                    await asyncio.sleep(5)
-                    continue
-                
-                logger.info("Authentication successful")
-                
-                # Main recording loop
-                while True:
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                try:
+                    response = await websocket.recv()
+                    auth_response = json.loads(response)
                     
-                    # Capture frame
-                    success = recorder.capture_frame()
-                    new_file = recorder.ensure_writer()
+                    if auth_response.get("status") != "authenticated":
+                        logger.error(f"Authentication failed: {auth_response.get('message')}")
+                        await asyncio.sleep(5)
+                        continue
                     
-                    # Send metadata update
-                    metadata = json.dumps({
-                        "type": "metadata",
-                        "staff_id": staff_id,
-                        "name": name,
-                        "division": division,
-                        "timestamp": timestamp,
-                        "recording_status": "active" if success else "error",
-                        "video_file": get_video_filename(staff_id)
-                    })
-                    await websocket.send(metadata)
+                    logger.info("Authentication successful")
                     
-                    if new_file:
-                        logger.info(f"Started new video file: {get_video_filename(staff_id)}")
-                    
-                    # Wait for next frame (1 FPS)
-                    await asyncio.sleep(1)
+                    # Main recording loop
+                    while True:
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        success = recorder.capture_frame()
+                        new_file = recorder.ensure_writer()
+                        
+                        metadata = json.dumps({
+                            "type": "metadata",
+                            "staff_id": staff_id,
+                            "name": name,
+                            "division": division,
+                            "timestamp": timestamp,
+                            "recording_status": "active" if success else "error",
+                            "video_file": get_video_filename(staff_id)
+                        })
+                        
+                        await websocket.send(metadata)
+                        await asyncio.sleep(1)  # 1 FPS
+                        
+                except websockets.exceptions.ConnectionClosed as e:
+                    logger.error(f"WebSocket connection closed unexpectedly: {e}")
+                    raise  # Re-raise to trigger reconnection
                     
         except Exception as e:
             logger.error(f"Connection error: {e}")
             retry_count += 1
             delay = min(60, base_delay * (2 ** retry_count))
             await asyncio.sleep(delay)
-        
+            
         finally:
             recorder.release()
 

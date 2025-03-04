@@ -72,41 +72,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
         
         # API endpoint for staff list
         elif self.path == '/api/staff-list':
-            response = {
-                "staffList": [],
-                "staffData": {}
-            }
-            
-            if os.path.exists(screenshots_dir):
-                for staff_id in os.listdir(screenshots_dir):
-                    staff_dir = os.path.join(screenshots_dir, staff_id)
-                    if os.path.isdir(staff_dir):
-                        response["staffList"].append(staff_id)
-                        
-                        # Get staff metadata
-                        metadata_file = os.path.join(staff_dir, "metadata.json")
-                        name = "Unknown User"
-                        division = "Unassigned"
-                        recording_status = "inactive"
-                        
-                        if os.path.exists(metadata_file):
-                            try:
-                                with open(metadata_file, "r") as f:
-                                    metadata = json.load(f)
-                                    name = metadata.get("name", name)
-                                    division = metadata.get("division", division)
-                                    recording_status = metadata.get("recording_status", "inactive")
-                            except:
-                                logger.error(f"Error reading metadata for {staff_id}")
-                        
-                        # Add staff data
-                        response["staffData"][staff_id] = {
-                            "name": name,
-                            "division": division,
-                            "recording_status": recording_status,
-                            "timestamp": datetime.now().isoformat(),
-                            "video_path": f"/videos/{staff_id}/latest.mp4"
-                        }
+            response = get_staff_list()
             
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -274,6 +240,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
             clean_path = parsed_url.path[1:]
             file_path = os.path.join(os.getcwd(), clean_path)
             
+            # Check if file exists
             if os.path.exists(file_path) and os.path.isfile(file_path):
                 try:
                     file_size = os.path.getsize(file_path)
@@ -281,6 +248,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
                     self.send_header('Content-Type', 'video/mp4')
                     self.send_header('Content-Length', str(file_size))
                     self.send_header('Accept-Ranges', 'bytes')
+                    self.send_header('Access-Control-Allow-Origin', '*')
                     self.end_headers()
                     
                     with open(file_path, 'rb') as f:
@@ -288,7 +256,14 @@ class HTTPHandler(BaseHTTPRequestHandler):
                 except Exception as e:
                     logger.error(f"Error streaming video {file_path}: {e}")
                     self.send_error(500, "Internal Server Error")
-                return
+            else:
+                # Return 404 for missing videos
+                self.send_response(404)
+                self.send_header('Content-type', 'text/plain')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(b"Video not found")
+            return
         
         # Default - return 404
         self.send_response(404)
@@ -335,20 +310,21 @@ async def handle_client(websocket):
                 logger.warning(f"Failed authentication attempt from {websocket.remote_address}")
                 return
         
-        if not authenticated:
+        if not authenticated or not staff_id:
             return
             
-        # Ensure staff directory exists
-        staff_dir = ensure_directories(screenshots_dir, staff_id)
+        # Ensure staff directories exist
+        staff_screenshots_dir = ensure_directories(screenshots_dir, staff_id)
+        staff_videos_dir = ensure_directories(videos_dir, staff_id)
         
-        # Create metadata file if it doesn't exist
-        metadata_file = os.path.join(staff_dir, "metadata.json")
+        # Create metadata file
+        metadata_file = os.path.join(staff_screenshots_dir, "metadata.json")
         staff_metadata = {
             "staff_id": staff_id,
             "name": name,
             "division": division,
             "last_connected": datetime.now().isoformat(),
-            "activity_status": "active",  # Default status
+            "activity_status": "active",
             "last_activity": datetime.now().isoformat()
         }
         
@@ -357,38 +333,26 @@ async def handle_client(websocket):
         
         # Main message loop
         while True:
-            # Receive metadata first
             metadata_msg = await websocket.recv()
             metadata = json.loads(metadata_msg)
             
             if metadata.get("type") == "metadata":
                 timestamp = metadata.get("timestamp")
-                activity_status = metadata.get("activity_status", "active")
+                video_file = metadata.get("video_file")
+                activity_status = metadata.get("recording_status", "active")
                 
-                # Update the staff metadata with new activity status
+                # Update staff metadata
                 with open(metadata_file, "r") as f:
                     staff_metadata = json.load(f)
                 
                 staff_metadata["last_activity"] = datetime.now().isoformat()
                 staff_metadata["activity_status"] = activity_status
+                staff_metadata["current_video"] = video_file if video_file else None
                 
                 with open(metadata_file, "w") as f:
                     json.dump(staff_metadata, f, indent=4)
                 
-                logger.debug(f"Preparing to receive image from {name} ({staff_id}) in {division}, timestamp: {timestamp}, status: {activity_status}")
-                
-                # Receive the actual image
-                image_data = await websocket.recv()
-                
-                # Save the image
-                filename = f"{timestamp}.jpg"
-                filepath = os.path.join(staff_dir, filename)
-                
-                logger.debug(f"Saving image to {filepath}")
-                with open(filepath, "wb") as f:
-                    f.write(image_data)
-                
-                logger.info(f"Screenshot saved from {name} ({staff_id}) in {division} ({len(image_data)/1024:.1f} KB)")
+                logger.debug(f"Updated metadata for {name} ({staff_id})")
                 
     except websockets.exceptions.ConnectionClosed:
         logger.info(f"Connection closed for staff {staff_id}")
@@ -396,6 +360,20 @@ async def handle_client(websocket):
         logger.error("Invalid JSON received")
     except Exception as e:
         logger.error(f"Error handling client: {e}")
+    finally:
+        if staff_id:
+            # Update metadata to show inactive status
+            try:
+                metadata_file = os.path.join(screenshots_dir, staff_id, "metadata.json")
+                if os.path.exists(metadata_file):
+                    with open(metadata_file, "r") as f:
+                        staff_metadata = json.load(f)
+                    staff_metadata["activity_status"] = "inactive"
+                    staff_metadata["last_activity"] = datetime.now().isoformat()
+                    with open(metadata_file, "w") as f:
+                        json.dump(staff_metadata, f, indent=4)
+            except Exception as e:
+                logger.error(f"Error updating metadata on disconnect: {e}")
 
 # HTTP server thread
 class HTTPServerThread(threading.Thread):
@@ -450,6 +428,59 @@ def signal_handler(sig, frame):
     logger.info("Shutting down...")
     asyncio.get_event_loop().stop()
     sys.exit(0)
+
+# Update the staff list API to include video information
+def get_staff_list():
+    config = load_config()
+    videos_dir = config.get("videos_dir", "videos")
+    
+    response = {
+        "staffList": [],
+        "staffData": {}
+    }
+    
+    try:
+        for staff_id in os.listdir(videos_dir):
+            staff_dir = os.path.join(videos_dir, staff_id)
+            if not os.path.isdir(staff_dir):
+                continue
+            
+            # Get latest video file
+            video_files = [f for f in os.listdir(staff_dir) if f.endswith('.mp4')]
+            latest_video = None
+            if video_files:
+                video_files.sort(reverse=True)
+                latest_video = video_files[0]
+                
+            # Get metadata
+            metadata_file = os.path.join(staff_dir, "metadata.json")
+            metadata = {
+                "name": "Unknown User",
+                "division": "Unassigned",
+                "activity_status": "inactive",
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            if os.path.exists(metadata_file):
+                try:
+                    with open(metadata_file, "r") as f:
+                        metadata.update(json.load(f))
+                except:
+                    logger.error(f"Error reading metadata for {staff_id}")
+            
+            response["staffList"].append(staff_id)
+            response["staffData"][staff_id] = {
+                "name": metadata.get("name", "Unknown User"),
+                "division": metadata.get("division", "Unassigned"),
+                "recording_status": metadata.get("activity_status", "inactive"),
+                "timestamp": metadata.get("last_activity", datetime.now().isoformat()),
+                "video_path": f"/videos/{staff_id}/{latest_video}" if latest_video else None
+            }
+    
+    except Exception as e:
+        logger.error(f"Error getting staff list: {e}")
+    
+    return response
 
 if __name__ == "__main__":
     logger.info("OEKS Team Tracker - Combined Server starting...")

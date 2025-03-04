@@ -1317,8 +1317,9 @@
                 // Reload video source periodically
                 const video = staffCard.querySelector('.staff-video');
                 setInterval(() => {
-                    video.src = `${staffInfo.video_path}?t=${Date.now()}`;
-                }, 5000); // Refresh every 5 seconds
+                    const timestamp = Date.now();
+                    video.src = `${staffInfo.video_path}?t=${timestamp}`;
+                }, 5000);
 
                 // Add error handling for video elements
                 setupVideoErrorHandling(video);
@@ -1334,10 +1335,10 @@
         function connectWebSocket() {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsHost = window.location.hostname;
-            const wsPort = '8765'; // Use the correct WebSocket port
+            const wsPort = '8765';  // Matches admin_config.json ws_port
             const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}`;
             
-            console.log(`Attempting WebSocket connection to: ${wsUrl}`);
+            console.log(`Connecting to WebSocket: ${wsUrl}`);
             socket = new WebSocket(wsUrl);
             
             socket.onopen = () => {
@@ -1778,8 +1779,10 @@
         function updateVideoSource(videoElement, staffId) {
             const timestamp = Date.now();
             const videoHost = window.location.hostname;
-            const videoPort = '8080'; // HTTP port
-            videoElement.src = `http://${videoHost}:${videoPort}/videos/${staffId}/latest.mp4?t=${timestamp}`;
+            const videoPort = '8080';  // Matches admin_config.json http_port
+            const videoUrl = `http://${videoHost}:${videoPort}/videos/${staffId}/latest.mp4?t=${timestamp}`;
+            console.log(`Loading video from: ${videoUrl}`);
+            videoElement.src = videoUrl;
         }
     </script>
 </body>
