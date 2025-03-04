@@ -235,6 +235,66 @@ class HTTPHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b"Screenshot not found")
                 return
         
+        # Handle CSS files
+        elif self.path.startswith('/css/'):
+            parsed_url = urlparse(self.path)
+            clean_path = parsed_url.path[1:]  # Remove leading slash
+            file_path = os.path.join(os.getcwd(), clean_path)
+            
+            logger.info(f"Request for CSS file: {self.path}, serving from: {file_path}")
+            
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                self.send_response(200)
+                self.send_header('Content-type', 'text/css')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                
+                try:
+                    with open(file_path, 'rb') as f:
+                        self.wfile.write(f.read())
+                        logger.info(f"Successfully served CSS file: {file_path}")
+                except Exception as e:
+                    logger.error(f"Error reading CSS file {file_path}: {e}")
+                    self.wfile.write(b"Error reading file")
+                return
+            else:
+                logger.warning(f"CSS file not found: {file_path}")
+                self.send_response(404)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b'CSS file not found')
+                return
+                
+        # Handle JavaScript files
+        elif self.path.startswith('/js/'):
+            parsed_url = urlparse(self.path)
+            clean_path = parsed_url.path[1:]  # Remove leading slash
+            file_path = os.path.join(os.getcwd(), clean_path)
+            
+            logger.info(f"Request for JavaScript file: {self.path}, serving from: {file_path}")
+            
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                self.send_response(200)
+                self.send_header('Content-type', 'application/javascript')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                
+                try:
+                    with open(file_path, 'rb') as f:
+                        self.wfile.write(f.read())
+                        logger.info(f"Successfully served JavaScript file: {file_path}")
+                except Exception as e:
+                    logger.error(f"Error reading JavaScript file {file_path}: {e}")
+                    self.wfile.write(b"Error reading file")
+                return
+            else:
+                logger.warning(f"JavaScript file not found: {file_path}")
+                self.send_response(404)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b'JavaScript file not found')
+                return
+        
         # Add new endpoint for video streaming - improved to handle direct video files
         elif self.path.startswith('/videos/'):
             parsed_url = urlparse(self.path)
@@ -340,6 +400,71 @@ class HTTPHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
         self.wfile.write(b'Not Found')
+    
+    def do_HEAD(self):
+        """Handle HEAD requests - needed for video loading checks by browsers"""
+        parsed_url = urlparse(self.path)
+        clean_path = parsed_url.path[1:]
+        
+        # Handle video files HEAD request
+        if self.path.startswith('/videos/'):
+            file_path = os.path.join(os.getcwd(), clean_path)
+            videos_dir = config.get("videos_dir", "videos")
+            
+            # Process the path to find the actual video file, similar to do_GET
+            if 'latest.mp4' in file_path:
+                # Extract the staff_id
+                parts = clean_path.split('/')
+                if len(parts) >= 2:
+                    staff_id = parts[1]
+                    
+                    # First check in staff subdirectory
+                    staff_dir = os.path.join(videos_dir, staff_id)
+                    if os.path.exists(staff_dir) and os.path.isdir(staff_dir):
+                        video_files = [f for f in os.listdir(staff_dir) if f.endswith('.mp4')]
+                        if video_files:
+                            video_files.sort(key=lambda x: os.path.getmtime(os.path.join(staff_dir, x)), reverse=True)
+                            latest_video = video_files[0]
+                            file_path = os.path.join(staff_dir, latest_video)
+                    
+                    # If not found in staff dir, check main videos directory
+                    if not os.path.exists(file_path) or not os.path.isfile(file_path):
+                        matching_files = [f for f in os.listdir(videos_dir) 
+                                        if f.endswith('.mp4') and f.startswith(f"{staff_id}-") 
+                                        and os.path.isfile(os.path.join(videos_dir, f))]
+                        
+                        if matching_files:
+                            matching_files.sort(key=lambda x: os.path.getmtime(os.path.join(videos_dir, x)), reverse=True)
+                            latest_video = matching_files[0]
+                            file_path = os.path.join(videos_dir, latest_video)
+            
+            # Handle direct video file request (not "latest.mp4")
+            elif clean_path.count('/') == 1 and clean_path.endswith('.mp4'):
+                video_filename = os.path.basename(clean_path)
+                direct_file_path = os.path.join(videos_dir, video_filename)
+                
+                if os.path.exists(direct_file_path) and os.path.isfile(direct_file_path):
+                    file_path = direct_file_path
+            
+            # Send appropriate HEAD response
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                file_size = os.path.getsize(file_path)
+                self.send_response(200)
+                self.send_header('Content-Type', 'video/mp4')
+                self.send_header('Content-Length', str(file_size))
+                self.send_header('Accept-Ranges', 'bytes')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                self.end_headers()
+            else:
+                self.send_response(404)
+                self.send_header('Content-type', 'text/plain')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+        else:
+            # For non-video HEAD requests
+            self.send_response(200)
+            self.end_headers()
     
     def log_message(self, format, *args):
         logger.info("%s - %s" % (self.address_string(), format % args))
@@ -531,7 +656,16 @@ def get_staff_list():
                     
                     # Only process if it looks like a valid staff ID format
                     if staff_id:
-                        video_path = f"/videos/{video_file}?t={int(time.time())}"
+                        # Initialize video_path to null
+                        video_path = None
+                        
+                        # Check if the video file actually exists before setting a path
+                        video_file_path = os.path.join(videos_dir, video_file)
+                        if os.path.exists(video_file_path) and os.path.isfile(video_file_path):
+                            video_path = f"/videos/{video_file}?t={int(time.time())}"
+                            logger.info(f"Found video for staff {staff_id}: {video_file}")
+                        else:
+                            logger.warning(f"Video file referenced but not found: {video_file_path}")
                         
                         # Get metadata from screenshots directory
                         metadata_file = os.path.join(screenshots_dir, staff_id, "metadata.json")
