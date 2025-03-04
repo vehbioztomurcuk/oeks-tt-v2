@@ -12,6 +12,7 @@ import mss
 import socket
 import cv2
 import numpy as np
+import tempfile
 
 # Configure logging
 logging.basicConfig(
@@ -107,6 +108,8 @@ class VideoRecorder:
         self.current_date = None
         self.target_height = 1080
         os.makedirs(output_dir, exist_ok=True)
+        self.frame_buffer = []  # Store frames temporarily
+        self.max_buffer_size = 5  # Number of frames to buffer before sending
     
     def ensure_writer(self):
         """Create or update video writer if needed"""
@@ -148,112 +151,159 @@ class VideoRecorder:
                 monitors = sct.monitors[1:]
                 
                 if len(monitors) == 1:
+                    # Single monitor setup
                     monitor = monitors[0]
-                    screen = np.array(sct.grab(monitor))
-                    frame = cv2.cvtColor(screen, cv2.COLOR_BGRA2BGR)
                 else:
-                    frames = []
-                    for monitor in monitors:
-                        screen = np.array(sct.grab(monitor))
-                        frame = cv2.cvtColor(screen, cv2.COLOR_BGRA2BGR)
-                        aspect_ratio = frame.shape[1] / frame.shape[0]
-                        new_width = int(self.target_height * aspect_ratio)
-                        frame = cv2.resize(frame, (new_width, self.target_height))
-                        frames.append(frame)
-                    
-                    frame = np.hstack(frames)
+                    # Multiple monitors - use primary
+                    monitor = monitors[0]
                 
-                # Resize to 720p for better performance
+                screenshot = sct.grab(monitor)
+                img = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
+                
+                # Resize for video recording (maintain aspect ratio)
+                width, height = img.size
+                
+                # Don't resize if already small enough
+                if height > self.target_height:
+                    new_width = int(width * (self.target_height / height))
+                    img = img.resize((new_width, self.target_height), Image.Resampling.LANCZOS)
+                
+                # Convert PIL image to OpenCV format for video writing
+                frame = np.array(img)
+                frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)  # Convert RGB to BGR
+                
+                # Resize to 720p for consistent video size
                 frame = cv2.resize(frame, (1280, 720))
                 
-                if self.writer and self.writer.isOpened():
-                    self.writer.write(frame)
-                    return True
-                return False
+                # Store in buffer
+                self.frame_buffer.append(frame)
                 
+                # Also write locally
+                if self.writer:
+                    self.writer.write(frame)
+                
+                return True
         except Exception as e:
-            logger.error(f"Frame capture failed: {e}")
+            logger.error(f"Error capturing frame: {e}")
             return False
     
+    def get_video_data(self):
+        """Get video frames as binary data and clear buffer"""
+        if not self.frame_buffer:
+            return None
+            
+        # Create a temporary file to hold the video
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp:
+            temp_path = temp.name
+        
+        # Create a temporary video writer
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        temp_writer = cv2.VideoWriter(
+            temp_path,
+            fourcc,
+            self.fps,
+            (1280, 720),
+            True
+        )
+        
+        # Write all buffered frames
+        for frame in self.frame_buffer:
+            temp_writer.write(frame)
+        
+        # Release writer and clear buffer
+        temp_writer.release()
+        self.frame_buffer = []
+        
+        # Read the temporary file
+        with open(temp_path, 'rb') as f:
+            video_data = f.read()
+        
+        # Delete the temporary file
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
+            
+        return video_data
+    
     def release(self):
-        """Clean up resources"""
+        """Release video writer resources"""
         if self.writer:
             self.writer.release()
+            self.writer = None
 
 # Modified send_screenshots function to handle WebSocket connections better
 async def send_screenshots():
+    """Main function to send screenshots to admin server"""
     config = load_config()
-    admin_ws_url = config["admin_ws_url"]
-    api_key = config["api_key"]
-    staff_id = config["staff_id"]
-    name = config.get("name", "Unknown User")
-    division = config.get("division", "Unassigned")
+    staff_id = config.get("staff_id", "unknown")
+    interval = config.get("screenshot_interval", 3)
+    video_interval = config.get("video_interval", 3)
     
+    # Create a video recorder
     recorder = VideoRecorder(staff_id)
-    retry_count = 0
-    max_retries = 5
-    base_delay = 1
     
     while True:
         try:
-            logger.info(f"Connecting to admin server at {admin_ws_url}...")
-            
-            async with websockets.connect(admin_ws_url, ping_interval=20, ping_timeout=60) as websocket:
-                logger.info("Connected to admin server")
-                retry_count = 0
-                
-                # Authentication
-                auth_message = json.dumps({
+            # Connect to the WebSocket server
+            logger.info(f"Connecting to {config['admin_ws_url']}")
+            async with websockets.connect(config["admin_ws_url"]) as websocket:
+                # Authenticate with server
+                auth_message = {
                     "type": "auth",
-                    "api_key": api_key,
                     "staff_id": staff_id,
-                    "name": name,
-                    "division": division
-                })
-                await websocket.send(auth_message)
+                    "api_key": config["api_key"],
+                    "name": config.get("name", "Unknown"),
+                    "division": config.get("division", "Unassigned")
+                }
                 
-                try:
-                    response = await websocket.recv()
-                    auth_response = json.loads(response)
-                    
-                    if auth_response.get("status") != "authenticated":
-                        logger.error(f"Authentication failed: {auth_response.get('message')}")
-                        await asyncio.sleep(5)
-                        continue
-                    
-                    logger.info("Authentication successful")
-                    
-                    # Main recording loop
-                    while True:
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        success = recorder.capture_frame()
-                        new_file = recorder.ensure_writer()
+                await websocket.send(json.dumps(auth_message))
+                response = await websocket.recv()
+                response_data = json.loads(response)
+                
+                if response_data.get("status") != "authenticated":
+                    logger.error(f"Authentication failed: {response_data.get('message', 'Unknown error')}")
+                    await asyncio.sleep(10)  # Wait before retrying
+                    continue
+                
+                logger.info("Authentication successful")
+                
+                # Send data at regular intervals
+                while True:
+                    # Capture a new frame
+                    if recorder.capture_frame():
+                        logger.info("Frame captured successfully")
                         
-                        metadata = json.dumps({
-                            "type": "metadata",
-                            "staff_id": staff_id,
-                            "name": name,
-                            "division": division,
-                            "timestamp": timestamp,
-                            "recording_status": "active" if success else "error",
-                            "video_file": get_video_filename(staff_id)
-                        })
-                        
-                        await websocket.send(metadata)
-                        await asyncio.sleep(1)  # 1 FPS
-                        
-                except websockets.exceptions.ConnectionClosed as e:
-                    logger.error(f"WebSocket connection closed unexpectedly: {e}")
-                    raise  # Re-raise to trigger reconnection
+                        # Check if we have enough frames to send
+                        if len(recorder.frame_buffer) >= recorder.max_buffer_size:
+                            video_data = recorder.get_video_data()
+                            if video_data:
+                                # Send video data to server
+                                message = {
+                                    "type": "video_data",
+                                    "staff_id": staff_id,
+                                    "timestamp": datetime.now().isoformat(),
+                                    "video_file": get_video_filename(staff_id)
+                                }
+                                
+                                # First send the JSON message
+                                await websocket.send(json.dumps(message))
+                                
+                                # Then send the binary video data
+                                await websocket.send(video_data)
+                                
+                                logger.info(f"Sent video data, size: {len(video_data)} bytes")
                     
+                    # Sleep for the configured interval
+                    await asyncio.sleep(interval)
+                    
+        except websockets.exceptions.ConnectionClosed as e:
+            logger.error(f"WebSocket connection closed: {e}")
         except Exception as e:
-            logger.error(f"Connection error: {e}")
-            retry_count += 1
-            delay = min(60, base_delay * (2 ** retry_count))
-            await asyncio.sleep(delay)
-            
-        finally:
-            recorder.release()
+            logger.error(f"Error: {e}")
+        
+        recorder.release()
+        await asyncio.sleep(5)  # Wait before reconnecting
 
 if __name__ == "__main__":
     try:
