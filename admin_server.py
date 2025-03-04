@@ -289,11 +289,22 @@ class HTTPHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(staff_response).encode())
         
-        elif path == "/api/history":
+        elif path == "/api/history" or path.startswith("/api/staff-history/"):
             # Parse query parameters
             query = urlparse(self.path).query
             params = dict(parse_qsl(query))
-            staff_id = params.get("staff_id")
+            
+            # Get staff_id either from path or query parameter
+            staff_id = None
+            if path.startswith("/api/staff-history/"):
+                # Extract staff_id from path: /api/staff-history/{staff_id}
+                staff_id = path.split("/api/staff-history/")[1]
+                # Remove any additional path segments if present
+                if '/' in staff_id:
+                    staff_id = staff_id.split('/')[0]
+            else:
+                # Get from query parameter
+                staff_id = params.get("staff_id")
             
             if not staff_id:
                 self.send_response(400)
@@ -302,8 +313,13 @@ class HTTPHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "Missing staff_id parameter"}).encode())
                 return
             
+            # Extract date filter and limit parameters
+            date_filter = params.get("date", "all")
+            limit = params.get("limit", "20")
+            
             # Get history for the staff member
-            history_data = self.get_staff_history(staff_id)
+            logger.info(f"Fetching history for staff ID: {staff_id}, date filter: {date_filter}, limit: {limit}")
+            history_data = self.get_staff_history(staff_id, date_filter, limit)
             
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -313,6 +329,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
         
         else:
             # Unknown API endpoint
+            logger.warning(f"Unknown API endpoint requested: {path}")
             self.send_response(404)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
@@ -345,9 +362,25 @@ class HTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(f"404 - File Not Found: {file_path}".encode())
             return False
 
-    def get_staff_history(self, staff_id):
-        """Get history data for a staff member"""
+    def get_staff_history(self, staff_id, date_filter=None, limit=20):
+        """Get history data for a staff member
+        
+        Args:
+            staff_id (str): ID of the staff member
+            date_filter (str, optional): Date filter in YYYYMMDD format
+            limit (int, optional): Maximum number of history items to return
+        
+        Returns:
+            dict: History data for the staff member
+        """
         global config
+        
+        # Parse limit if provided as a string
+        if isinstance(limit, str) and limit.isdigit():
+            limit = int(limit)
+        elif not isinstance(limit, int):
+            limit = 20  # Default limit
+        
         history_data = {
             "staffId": staff_id,
             "history": [],
@@ -367,6 +400,8 @@ class HTTPHandler(BaseHTTPRequestHandler):
         
         # Get available dates from filenames
         all_dates = set()
+        date_filtered_files = []
+        
         for file in video_files:
             # Extract date from filename if possible (format depends on your naming convention)
             try:
@@ -375,15 +410,26 @@ class HTTPHandler(BaseHTTPRequestHandler):
                 if len(date_part) >= 3:
                     date_str = f"{date_part[0]}{date_part[1]}{date_part[2].split('.')[0]}"
                     all_dates.add(date_str)
-            except:
-                pass
+                    
+                    # Apply date filter if provided
+                    if date_filter and date_filter != 'all':
+                        if date_str == date_filter:
+                            date_filtered_files.append(file)
+                    else:
+                        date_filtered_files.append(file)
+            except Exception as e:
+                logger.warning(f"Error parsing date from filename {file}: {e}")
+                date_filtered_files.append(file)  # Include files with unparseable dates
+        
+        # If date filter was applied, use filtered files, otherwise use all files
+        files_to_process = date_filtered_files if date_filter else video_files
         
         # Sort by modification time (newest first)
-        video_files.sort(key=lambda x: os.path.getmtime(os.path.join(staff_dir, x)), reverse=True)
+        files_to_process.sort(key=lambda x: os.path.getmtime(os.path.join(staff_dir, x)), reverse=True)
         
-        # Build history items (limit to 20)
+        # Build history items (respect the limit)
         history_items = []
-        for file in video_files[:20]:
+        for file in files_to_process[:limit]:
             file_path = os.path.join(staff_dir, file)
             timestamp = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
             history_items.append({

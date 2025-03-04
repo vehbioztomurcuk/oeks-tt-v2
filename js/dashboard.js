@@ -189,6 +189,26 @@ function fetchStaffData() {
             return response.json();
         })
         .then(data => {
+            // Log the entire API response for debugging
+            console.log('Staff API Response:', data);
+            console.log('Staff List Length:', data.staffList ? data.staffList.length : 0);
+            console.log('Staff Data Keys:', Object.keys(data.staffData || {}));
+            
+            // Store staff data globally
+            staffMembers = data.staffData || {};
+            
+            // Update the lists of divisions and names for filters
+            divisionsList = new Set();
+            namesList = new Set();
+            
+            Object.values(staffMembers).forEach(staff => {
+                if (staff.division) divisionsList.add(staff.division);
+                if (staff.name) namesList.add(staff.name);
+            });
+            
+            // Update filter dropdowns
+            updateFilterOptions();
+            
             // Update stats
             updateStats(data);
             
@@ -235,8 +255,12 @@ function updateDashboard(data) {
     // Clear any previous content
     staffGrid.innerHTML = '';
     
+    console.log('Updating dashboard with staff list:', staffList);
+    console.log('Staff data:', staffData);
+    
     // If no staff members found, show empty state
-    if (staffList.length === 0) {
+    if (!staffList || staffList.length === 0) {
+        console.warn('No staff members found in staff list');
         const emptyState = `
             <div class="staff-card">
                 <div class="staff-header">
@@ -258,7 +282,16 @@ function updateDashboard(data) {
     
     // Process each staff member
     staffList.forEach(staffId => {
+        console.log(`Processing staff member: ${staffId}`);
+        
+        // Skip if no staff data
+        if (!staffData || !staffData[staffId]) {
+            console.warn(`No data found for staff ID: ${staffId}`);
+            return;
+        }
+        
         const staffInfo = staffData[staffId];
+        console.log(`Staff info:`, staffInfo);
         
         // Count active staff
         if (staffInfo.recording_status === 'active') {
@@ -275,7 +308,7 @@ function updateDashboard(data) {
         
         // Create card HTML
         let cardHTML = `
-            <div class="staff-card" data-staff-id="${staffId}" data-name="${staffInfo.name}" data-division="${staffInfo.division}">
+            <div id="staff-${staffId}" class="staff-card" data-staff-id="${staffId}" data-name="${staffInfo.name}" data-division="${staffInfo.division}">
                 <div class="staff-header">
                     <span>
                         <span class="status-indicator status-${staffInfo.recording_status}"></span>
@@ -353,7 +386,10 @@ function updateDashboard(data) {
         
         // Add to grid
         staffGrid.innerHTML += cardHTML;
+        console.log(`Added staff card for ${staffId}`);
     });
+    
+    console.log(`Dashboard updated with ${staffList.length} staff members`);
     
     // Update stats
     updateStats({
