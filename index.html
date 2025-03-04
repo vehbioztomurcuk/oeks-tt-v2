@@ -233,19 +233,40 @@
             margin-left: 5px;
         }
         
-        .staff-image-container {
+        .video-container {
+            position: relative;
+            width: 100%;
             height: 200px;
-            overflow: hidden;
             background-color: #111;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            overflow: hidden;
         }
         
-        .staff-image {
+        .staff-video {
             width: 100%;
             height: 100%;
             object-fit: contain;
+        }
+        
+        .video-status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: 0.8rem;
+        }
+        
+        .video-timestamp {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: 0.8rem;
         }
         
         .timestamp {
@@ -359,7 +380,7 @@
             }
         }
         
-        .live-image-container {
+        .modal-video-container {
             background-color: #111;
             border-radius: 8px;
             overflow: hidden;
@@ -369,7 +390,7 @@
             align-items: center;
         }
         
-        .live-image {
+        .modal-video {
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
@@ -611,7 +632,7 @@
         <div class="header">
             <h1><i class="fas fa-desktop"></i> OEKS Takım İzleme Paneli</h1>
             <div class="header-right">
-                <span id="connection-status">⚫ Bağlanıyor...</span>
+                <span id="connection-status">bağlı</span>
             </div>
         </div>
         
@@ -717,8 +738,10 @@
             </div>
             <div class="modal-body">
                 <div class="live-view-container">
-                    <div class="live-image-container">
-                        <img id="live-image" class="live-image" src="" alt="Canlı görüntü">
+                    <div class="modal-video-container">
+                        <video class="modal-video" autoplay muted loop playsinline controls>
+                            <source src="" type="video/mp4">
+                        </video>
                     </div>
                     
                     <div class="staff-details">
@@ -1246,16 +1269,11 @@
             
             // Store data in our staffMembers object and collect division/name data
             data.staffList.forEach(staffId => {
-                const screenshotInfo = data.latestScreenshots[staffId];
-                staffMembers[staffId] = screenshotInfo;
+                const staffInfo = data.staffData[staffId];
+                staffMembers[staffId] = staffInfo;
                 
-                // Add to filter lists
-                if (screenshotInfo.division) {
-                    divisionsList.add(screenshotInfo.division);
-                }
-                if (screenshotInfo.name) {
-                    namesList.add(screenshotInfo.name);
-                }
+                if (staffInfo.division) divisionsList.add(staffInfo.division);
+                if (staffInfo.name) namesList.add(staffInfo.name);
             });
             
             // Update filter dropdowns
@@ -1264,70 +1282,63 @@
             // Clear the grid if we have staff members
             if (data.staffList && data.staffList.length > 0) {
                 staffGrid.innerHTML = '';
-                totalScreenshots = data.staffList.length;
             }
             
             // Add staff cards
             data.staffList.forEach(staffId => {
-                const screenshotInfo = data.latestScreenshots[staffId];
-                const timestamp = new Date(screenshotInfo.timestamp);
+                const staffInfo = data.staffData[staffId];
+                const timestamp = new Date(staffInfo.timestamp);
                 const now = new Date();
-                const timeDiff = Math.round((now - timestamp) / 1000); // in seconds
                 
                 // Get name and division with fallbacks
-                const name = screenshotInfo.name || "Bilinmeyen Kullanıcı";
-                const division = screenshotInfo.division || "Tanımlanmamış";
-                
-                // Store path in our staffMembers object
-                staffMembers[staffId].path = screenshotInfo.path;
-                
-                // Determine if staff is active (screenshot in last minute)
-                const isActive = timeDiff < 60;
+                const name = staffInfo.name || "Bilinmeyen Kullanıcı";
+                const division = staffInfo.division || "Tanımlanmamış";
                 
                 // Create or update staff card
                 let staffCard = document.getElementById(`staff-${staffId}`);
                 
                 if (!staffCard) {
-                    // Create new card
                     staffCard = document.createElement('div');
                     staffCard.id = `staff-${staffId}`;
                     staffCard.className = 'staff-card';
                     staffCard.dataset.staffId = staffId;
                     staffGrid.appendChild(staffCard);
                     
-                    // Add click event to open live view
-                    staffCard.addEventListener('click', () => {
-                        openModal(staffId);
-                    });
+                    staffCard.addEventListener('click', () => openModal(staffId));
                 }
                 
-                // Update card content
+                // Update card content with video
                 staffCard.innerHTML = `
                     <div class="staff-header">
                         <span>
-                            <span class="status-indicator ${isActive ? 'status-active' : 'status-inactive'}"></span>
+                            <span class="status-indicator ${staffInfo.recording_status === 'active' ? 'status-active' : 'status-inactive'}"></span>
                             <strong>${name}</strong> <span class="badge">${division}</span>
                         </span>
                         <span>${formatTimeDiff(now, timestamp)} önce</span>
                     </div>
-                    <div class="staff-image-container">
-                        <img class="staff-image" alt="${name} ekran görüntüsü" 
-                             onload="this.style.opacity='1';" 
-                             style="opacity: 0; transition: opacity 0.3s;"
-                             onerror="this.onerror=null; this.src='data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==';" />
+                    <div class="video-container">
+                        <video class="staff-video" autoplay muted loop playsinline>
+                            <source src="${staffInfo.video_path}" type="video/mp4">
+                        </video>
+                        <div class="video-status">${staffInfo.recording_status === 'active' ? 'Kayıt' : 'Beklemede'}</div>
+                        <div class="video-timestamp">${timestamp.toLocaleTimeString('tr-TR')}</div>
                     </div>
                     <div class="timestamp">
                         <span>${staffId}</span> - ${timestamp.toLocaleString('tr-TR')}
                     </div>
                 `;
-                
-                // Load the image with retry mechanism
-                const imgElement = staffCard.querySelector('.staff-image');
-                const imageSrc = `${screenshotInfo.path}?t=${Date.now()}`;
-                loadImage(imgElement, imageSrc);
+
+                // Reload video source periodically
+                const video = staffCard.querySelector('.staff-video');
+                setInterval(() => {
+                    video.src = `${staffInfo.video_path}?t=${Date.now()}`;
+                }, 5000); // Refresh every 5 seconds
+
+                // Add error handling for video elements
+                setupVideoErrorHandling(video);
             });
             
-            // After updating all cards, apply filters
+            // Apply filters
             applyFilters();
         }
         
@@ -1770,6 +1781,21 @@
                 });
             }
         });
+
+        // Add error handling for video elements
+        function setupVideoErrorHandling(videoElement) {
+            videoElement.onerror = function() {
+                console.error('Video loading error:', videoElement.error);
+                // Show fallback content or retry loading
+                const container = videoElement.parentElement;
+                container.innerHTML = `
+                    <div class="error-state">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p>Video yüklenemedi</p>
+                    </div>
+                `;
+            };
+        }
     </script>
 </body>
 </html>

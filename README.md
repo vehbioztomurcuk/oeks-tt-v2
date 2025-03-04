@@ -246,3 +246,24 @@ oeks-tt-2
    └─ prompt.md
 
 ```
+```
+oeks-tt-2
+├─ admin_config.json
+├─ admin_server.py
+├─ archieve
+│  ├─ api_server.py
+│  ├─ combined_server.py
+│  └─ package.bat
+├─ cleanup_script.py
+├─ config.json
+├─ index.html
+├─ README-TR.md
+├─ README.md
+├─ requirements.txt
+├─ staff_app.py
+└─ trash
+   ├─ latest-message.md
+   ├─ Prompt-2.md
+   └─ prompt.md
+
+```

@@ -31,7 +31,8 @@ def load_config():
             "host": "0.0.0.0",
             "ws_port": 8765,
             "http_port": 8080,
-            "screenshots_dir": "screenshots"
+            "screenshots_dir": "screenshots",
+            "videos_dir": "videos"
         }
         with open('admin_config.json', 'w') as f:
             json.dump(default_config, f, indent=4)
@@ -48,6 +49,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         config = load_config()
         screenshots_dir = config.get("screenshots_dir", "screenshots")
+        videos_dir = config.get("videos_dir", "videos")
         
         # Serve index.html for root path
         if self.path == "/" or self.path == "/index.html":
@@ -71,10 +73,10 @@ class HTTPHandler(BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             
-            # Get list of staff directories
             staff_list = []
-            latest_screenshots = {}
+            staff_data = {}
             
+            # Check screenshots directory
             if os.path.exists(screenshots_dir):
                 for staff_id in os.listdir(screenshots_dir):
                     staff_dir = os.path.join(screenshots_dir, staff_id)
@@ -139,7 +141,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
                             # Get modified time as ISO string
                             mod_time = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
                             
-                            latest_screenshots[staff_id] = {
+                            staff_data[staff_id] = {
                                 "path": f"/screenshots/{staff_id}/latest.jpg",
                                 "timestamp": mod_time,
                                 "name": name,
@@ -147,29 +149,47 @@ class HTTPHandler(BaseHTTPRequestHandler):
                                 "activity_status": activity_status
                             }
             
-            # If no staff members yet, add some demo data
-            if not staff_list:
-                staff_list = ['demo_user_1', 'demo_user_2']
-                latest_screenshots = {
-                    'demo_user_1': {
-                        "path": "/screenshots/demo_user_1/latest.jpg",
-                        "timestamp": datetime.now().isoformat(),
-                        "name": "Demo Kullanıcı 1",
-                        "division": "Pazarlama",
-                        "activity_status": "unknown"
-                    },
-                    'demo_user_2': {
-                        "path": "/screenshots/demo_user_2/latest.jpg",
-                        "timestamp": datetime.now().isoformat(),
-                        "name": "Demo Kullanıcı 2",
-                        "division": "Satış",
-                        "activity_status": "unknown"
-                    }
-                }
+            # Check videos directory
+            if os.path.exists(videos_dir):
+                for staff_id in os.listdir(videos_dir):
+                    staff_dir = os.path.join(videos_dir, staff_id)
+                    
+                    if os.path.isdir(staff_dir):
+                        staff_list.append(staff_id)
+                        
+                        # Get latest video file
+                        video_files = [f for f in os.listdir(staff_dir) if f.endswith('.mp4')]
+                        if video_files:
+                            latest_video = max(video_files, key=lambda x: os.path.getmtime(os.path.join(staff_dir, x)))
+                            video_path = os.path.join(staff_dir, latest_video)
+                            
+                            # Get metadata
+                            metadata_file = os.path.join(staff_dir, "metadata.json")
+                            name = "Unknown User"
+                            division = "Unassigned"
+                            recording_status = "unknown"
+                            
+                            if os.path.exists(metadata_file):
+                                try:
+                                    with open(metadata_file, "r") as f:
+                                        metadata = json.load(f)
+                                        name = metadata.get("name", name)
+                                        division = metadata.get("division", division)
+                                        recording_status = metadata.get("recording_status", "unknown")
+                                except:
+                                    logger.error(f"Error reading metadata for {staff_id}")
+                            
+                            staff_data[staff_id] = {
+                                "video_path": f"/videos/{staff_id}/{latest_video}",
+                                "timestamp": datetime.fromtimestamp(os.path.getmtime(video_path)).isoformat(),
+                                "name": name,
+                                "division": division,
+                                "recording_status": recording_status
+                            }
             
             response = {
                 "staffList": staff_list,
-                "latestScreenshots": latest_screenshots
+                "staffData": staff_data
             }
             
             self.wfile.write(json.dumps(response).encode())
@@ -328,6 +348,28 @@ class HTTPHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b"Screenshot not found")
                 return
         
+        # Add new endpoint for video streaming
+        elif self.path.startswith('/videos/'):
+            parsed_url = urlparse(self.path)
+            clean_path = parsed_url.path[1:]
+            file_path = os.path.join(os.getcwd(), clean_path)
+            
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                try:
+                    file_size = os.path.getsize(file_path)
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'video/mp4')
+                    self.send_header('Content-Length', str(file_size))
+                    self.send_header('Accept-Ranges', 'bytes')
+                    self.end_headers()
+                    
+                    with open(file_path, 'rb') as f:
+                        self.wfile.write(f.read())
+                except Exception as e:
+                    logger.error(f"Error streaming video {file_path}: {e}")
+                    self.send_error(500, "Internal Server Error")
+                return
+        
         # Default - return 404
         self.send_response(404)
         self.send_header('Content-type', 'text/plain')
@@ -342,6 +384,7 @@ async def handle_client(websocket):
     config = load_config()
     api_key = config["api_key"]
     screenshots_dir = config["screenshots_dir"]
+    videos_dir = config["videos_dir"]
     
     staff_id = None
     name = None
