@@ -12,6 +12,9 @@ document.addEventListener('DOMContentLoaded', () => {
  * Initialize the application
  */
 function initializeApp() {
+    // Set initial state for live view to null
+    window.liveViewStaffId = null;
+    
     // Initialize dashboard controls
     initializeDashboardControls();
     

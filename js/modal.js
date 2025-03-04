@@ -93,8 +93,19 @@ function openModal(staffId) {
  * @param {HTMLElement} container - Container element for the video
  */
 function loadVideoForStaff(staffId, container) {
+    // Additional validation to prevent errors
+    if (!staffId || staffId === 'unknown') {
+        console.warn(`Invalid staff ID for video loading: ${staffId}`);
+        showVideoError("Geçersiz personel ID'si");
+        return;
+    }
+    
     const staff = staffMembers[staffId];
-    if (!staff) return;
+    if (!staff) {
+        console.warn(`Staff not found in data for video loading: ${staffId}`);
+        showVideoError("Personel verisi bulunamadı");
+        return;
+    }
     
     // Only try to load video if there's a valid path
     if (staff.video_path && staff.video_path !== "null" && staff.video_path !== null && !staff.video_path.includes("/null")) {
@@ -298,17 +309,30 @@ function closeModal() {
 }
 
 /**
- * Initialize the modal event listeners
+ * Initialize modal elements and events
  */
 function initializeModal() {
-    // Set up modal close button
-    document.getElementById('close-modal').addEventListener('click', () => {
-        closeModal();
-    });
+    console.log("Initializing modal...");
     
-    // Close modal on outside click
+    // Ensure global variables are initialized properly
+    if (typeof liveViewStaffId === 'undefined') {
+        window.liveViewStaffId = null;
+    }
+    
+    if (typeof liveViewRefreshRate === 'undefined') {
+        window.liveViewRefreshRate = 3;
+    }
+    
+    // Setup close button
+    const closeButton = document.getElementById('close-modal');
+    if (closeButton) {
+        closeButton.addEventListener('click', closeModal);
+    }
+    
+    // Setup click outside to close
     window.addEventListener('click', (e) => {
-        if (e.target === document.getElementById('live-view-modal')) {
+        const modal = document.getElementById('live-view-modal');
+        if (e.target === modal) {
             closeModal();
         }
     });
@@ -349,17 +373,32 @@ function setupLiveViewRefresh() {
  * Update live view with new video
  */
 function updateLiveView(staffId) {
-    if (!staffId) return;
+    // Additional validation to prevent errors
+    if (!staffId || staffId === 'unknown') {
+        console.warn(`Invalid staff ID for live view update: ${staffId}`);
+        return;
+    }
     
     // Check if the staff exists and is active
     const staff = staffMembers[staffId];
-    if (!staff || staff.recording_status !== 'active') return;
+    if (!staff) {
+        console.warn(`Staff not found in data: ${staffId}`);
+        return;
+    }
+    
+    if (staff.recording_status !== 'active') {
+        console.log(`Not updating video for inactive staff: ${staffId}`);
+        return;
+    }
     
     console.log(`Updating live view for ${staffId}`);
     
     // Get the video container
     const videoContainer = document.querySelector('.modal-video-container');
-    if (!videoContainer) return;
+    if (!videoContainer) {
+        console.warn('Video container not found in DOM');
+        return;
+    }
     
     // Check if there's a video element already
     const existingVideo = document.getElementById('modal-video-player');

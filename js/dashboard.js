@@ -215,8 +215,13 @@ function fetchStaffData() {
             // Update the dashboard with new data
             updateDashboard(data);
             
-            // Update live view if open and the function exists
-            if (typeof liveViewStaffId !== 'undefined' && liveViewStaffId && typeof updateLiveView === 'function') {
+            // Update live view if open, the function exists, and the staff ID is valid
+            if (typeof liveViewStaffId !== 'undefined' && 
+                liveViewStaffId && 
+                typeof updateLiveView === 'function' &&
+                liveViewStaffId !== 'unknown' &&
+                staffMembers[liveViewStaffId]) {  // Make sure staff exists in our data
+                console.log(`Refreshing live view for ${liveViewStaffId}`);
                 updateLiveView(liveViewStaffId);
             }
             
