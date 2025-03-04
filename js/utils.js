@@ -17,6 +17,55 @@ function formatTimeDiff(now, then) {
 }
 
 /**
+ * Formats a timestamp to show how long ago it occurred
+ * @param {string|number|Date} timestamp - The timestamp to format
+ * @returns {string} Formatted "time ago" string
+ */
+function formatTimeAgo(timestamp) {
+    if (!timestamp) return 'Bilinmiyor';
+    
+    const now = new Date();
+    let then;
+    
+    // Handle different timestamp formats
+    if (timestamp instanceof Date) {
+        then = timestamp;
+    } else if (typeof timestamp === 'number') {
+        then = new Date(timestamp);
+    } else {
+        // Try to parse string timestamp
+        then = new Date(timestamp);
+    }
+    
+    // Check if date is valid
+    if (isNaN(then.getTime())) return 'Geçersiz Tarih';
+    
+    const seconds = Math.floor((now - then) / 1000);
+    
+    // Define time intervals
+    const intervals = {
+        yıl: 31536000,
+        ay: 2592000,
+        hafta: 604800,
+        gün: 86400,
+        saat: 3600,
+        dakika: 60,
+        saniye: 1
+    };
+    
+    // Find the appropriate interval
+    for (const [unit, secondsInUnit] of Object.entries(intervals)) {
+        const interval = Math.floor(seconds / secondsInUnit);
+        
+        if (interval >= 1) {
+            return `${interval} ${unit}${interval > 1 && unit !== 'ay' ? '' : ''} önce`;
+        }
+    }
+    
+    return 'Az önce';
+}
+
+/**
  * Loads an image with retry mechanism
  * @param {HTMLImageElement} imgElement - Image element to load into
  * @param {string} src - Source URL
