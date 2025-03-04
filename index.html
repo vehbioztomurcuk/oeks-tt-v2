@@ -825,6 +825,7 @@
         let totalScreenshots = 0;
         let liveViewStaffId = null;
         let liveViewIntervalId = null;
+        let liveViewRefreshInterval = null;
         let liveViewRefreshRate = 3;
         let divisionsList = new Set();
         let namesList = new Set();
@@ -922,101 +923,151 @@
         
         // Setup live view refresh
         function setupLiveViewRefresh() {
-            if (liveViewIntervalId) {
-                clearInterval(liveViewIntervalId);
-                liveViewIntervalId = null;
-            }
-            
-            if (liveViewStaffId) {
-                updateLiveView();
-                liveViewIntervalId = setInterval(updateLiveView, liveViewRefreshRate * 1000);
-            }
+            // This function intentionally does nothing now
+            // We're handling refresh in openModal with a much longer interval
+            // This prevents the constant reload of videos that was causing issues
         }
         
-        // Improved image loading with fallback and retry
+        // Fix the loadImage function to handle null elements
         function loadImage(imgElement, src, attempts = 3) {
-            imgElement.onerror = function() {
-                if (attempts > 0) {
-                    // Retry loading after a short delay
-                    setTimeout(() => {
-                        console.log(`Retrying image load (${attempts} attempts left): ${src}`);
-                        loadImage(imgElement, `${src}&retry=${Date.now()}`, attempts - 1);
-                    }, 1000);
-                } else {
-                    // Give up and use placeholder
-                    console.error(`Failed to load image after multiple attempts: ${src}`);
-                    imgElement.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==';
-                }
-            };
-            imgElement.src = src;
+            if (!imgElement) {
+                console.error('Image element is null, cannot load:', src);
+                return;
+            }
+            
+            try {
+                imgElement.onerror = function() {
+                    if (attempts > 0) {
+                        // Retry loading after a short delay
+                        setTimeout(() => {
+                            console.log(`Retrying image load (${attempts} attempts left): ${src}`);
+                            loadImage(imgElement, `${src}&retry=${Date.now()}`, attempts - 1);
+                        }, 1000);
+                    } else {
+                        // Give up and use placeholder
+                        console.error(`Failed to load image after multiple attempts: ${src}`);
+                        imgElement.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==';
+                    }
+                };
+                imgElement.src = src;
+            } catch (e) {
+                console.error('Error setting up image load:', e);
+            }
         }
         
         // Update live view
         function updateLiveView() {
-            if (!liveViewStaffId) return;
-            
-            const staff = staffMembers[liveViewStaffId];
-            if (!staff) return;
-            
-            const now = new Date();
-            const timestamp = now.getTime();
-            const path = `${staff.path}?t=${timestamp}`;
-            
-            const liveImage = document.getElementById('live-image');
-            loadImage(liveImage, path);
-            
-            document.getElementById('detail-last-time').textContent = `${formatTimeDiff(now, new Date(staff.timestamp))} önce`;
+            // This function intentionally does nothing now
+            // We're letting the video play without interruption
         }
         
         // Open modal with staff data
         function openModal(staffId) {
-            liveViewStaffId = staffId;
             const staff = staffMembers[staffId];
+            if (!staff) return;
             
-            document.getElementById('modal-staff-name').textContent = staff.name || "Bilinmeyen Kullanıcı";
-            document.getElementById('detail-staff-id').textContent = staffId;
-            document.getElementById('detail-name').textContent = staff.name || "Bilinmeyen Kullanıcı";
-            document.getElementById('detail-division').textContent = staff.division || "Tanımlanmamış";
+            // Set the current staff ID for live view
+            liveViewStaffId = staffId;
             
-            const now = new Date();
-            const screenshotTime = new Date(staff.timestamp);
-            const timeDiff = Math.round((now - screenshotTime) / 1000);
-            
-            // Determine activity status
-            let statusText = 'İnaktif';
-            let statusColor = 'var(--danger-color)';
-            
-            if (staff.activity_status === 'active') {
-                statusText = 'Aktif';
-                statusColor = 'var(--success-color)';
-            } else if (staff.activity_status === 'idle') {
-                statusText = 'Beklemede';
-                statusColor = 'var(--warning-color)';
-            } else if (timeDiff < 60) {
-                // Fallback to time-based status if no explicit status
-                statusText = 'Aktif';
-                statusColor = 'var(--success-color)';
+            // Clear any existing refresh interval
+            if (liveViewRefreshInterval) {
+                clearInterval(liveViewRefreshInterval);
+                liveViewRefreshInterval = null;
             }
             
-            document.getElementById('detail-status').textContent = statusText;
-            document.getElementById('detail-status').style.color = statusColor;
-            document.getElementById('detail-last-time').textContent = `${formatTimeDiff(now, screenshotTime)} önce`;
+            // Update modal content
+            document.getElementById('detail-name').textContent = staff.name || "Unknown User";
+            document.getElementById('detail-division').textContent = staff.division || "Unassigned";
+            document.getElementById('detail-staff-id').textContent = staffId;
             
-            // Clear history playback
-            document.getElementById('history-playback-image').src = '';
-            document.getElementById('history-playback-image').style.opacity = '0';
-            document.getElementById('history-timestamp').textContent = '--:--:--';
+            // Update status indicator
+            const statusIndicator = document.querySelector('.modal-header .status-indicator');
+            if (statusIndicator) {
+                statusIndicator.className = 'status-indicator ' + 
+                    (staff.recording_status === 'active' ? 'status-active' : 'status-inactive');
+            }
+            
+            // Get the video element
+            const videoElement = document.querySelector('.modal-video');
+            if (!videoElement) return;
+            
+            // Clear previous video content
+            videoElement.innerHTML = '';
+            
+            // Only add video source if there's a valid path
+            if (staff.video_path) {
+                const timestamp = Date.now();
+                const source = document.createElement('source');
+                source.src = `${staff.video_path}?t=${timestamp}`;
+                source.type = 'video/mp4';
+                videoElement.appendChild(source);
+                
+                // Add error handling
+                videoElement.onerror = function() {
+                    console.error('Video loading error:', videoElement.error);
+                    videoElement.innerHTML = `
+                        <div class="no-video-message" style="display:flex;height:100%;align-items:center;justify-content:center;background:#f0f0f0;color:#666;">
+                            <div style="text-align:center;">
+                                <i class="fas fa-exclamation-triangle" style="font-size:48px;margin-bottom:10px;"></i>
+                                <p>Video yüklenemedi</p>
+                            </div>
+                        </div>
+                    `;
+                };
+                
+                // Load the video
+                videoElement.load();
+                
+                // Try to play, but don't worry if it fails
+                videoElement.play().catch(err => {
+                    console.error('Video playback error:', err);
+                    // Don't try to auto-play again, just let user click play button
+                });
+            } else {
+                // Show placeholder for no video
+                videoElement.innerHTML = `
+                    <div class="no-video-message" style="display:flex;height:100%;align-items:center;justify-content:center;background:#f0f0f0;color:#666;">
+                        <div style="text-align:center;">
+                            <i class="fas fa-video-slash" style="font-size:48px;margin-bottom:10px;"></i>
+                            <p>Video bulunamadı</p>
+                        </div>
+                    </div>
+                `;
+            }
             
             // Show modal
             document.getElementById('live-view-modal').style.display = 'block';
             
-            // Start refresh for live view
-            setupLiveViewRefresh();
+            // Set up a MUCH slower refresh for the modal info - only metadata, not video
+            // This avoids constantly reloading the video
+            liveViewRefreshInterval = setInterval(() => {
+                updateDetailInfo(staffId);
+            }, 10000); // Only refresh metadata every 10 seconds
             
-            // Fetch history data
-            fetchStaffHistory(staffId).catch(err => {
-                console.error("Error loading staff history:", err);
-            });
+            // Fetch history for this staff member
+            fetchStaffHistory(staffId);
+        }
+        
+        // Add a new function to update only the detail info, not the video
+        function updateDetailInfo(staffId) {
+            if (!staffId) return;
+            
+            const staff = staffMembers[staffId];
+            if (!staff) return;
+            
+            // Update the last time info
+            const detailLastTime = document.getElementById('detail-last-time');
+            if (detailLastTime) {
+                const now = new Date();
+                detailLastTime.textContent = `${formatTimeDiff(now, new Date(staff.timestamp))} önce`;
+            }
+            
+            // Update status indicator
+            const statusIndicator = document.querySelector('.modal-header .status-indicator');
+            if (statusIndicator) {
+                statusIndicator.className = 'status-indicator ' + 
+                    (staff.recording_status === 'active' ? 'status-active' : 'status-inactive');
+            }
         }
         
         // Close modal
@@ -1229,7 +1280,7 @@
                 .catch(error => {
                     console.error('Veri çekme hatası:', error);
                     updateConnectionStatus('error');
-
+                    
                     // If API isn't available yet, fallback to directory scan
                     fallbackToDirectoryScan();
                 });
@@ -1313,13 +1364,19 @@
                         <span>${staffId}</span> - ${timestamp.toLocaleString('tr-TR')}
                     </div>
                 `;
-
+                
                 // Reload video source periodically
                 const video = staffCard.querySelector('.staff-video');
-                setInterval(() => {
-                    const timestamp = Date.now();
-                    video.src = `${staffInfo.video_path}?t=${timestamp}`;
-                }, 5000);
+                if (staffInfo.video_path) {
+                    const videoSource = document.createElement('source');
+                    videoSource.src = `${staffInfo.video_path}?t=${Date.now()}`;
+                    videoSource.type = "video/mp4";
+                    video.innerHTML = ''; // Clear any existing sources
+                    video.appendChild(videoSource);
+                    video.load(); // Force reload
+                } else {
+                    video.innerHTML = '<div class="error-state"><i class="fas fa-exclamation-triangle"></i><p>Video yüklenemedi</p></div>';
+                }
 
                 // Add error handling for video elements
                 setupVideoErrorHandling(video);
@@ -1333,89 +1390,68 @@
         let socket;
         
         function connectWebSocket() {
+            // Use the current window's hostname and the port from admin_config.json
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsHost = window.location.hostname;
-            const wsPort = '8765';  // Matches admin_config.json ws_port
+            const wsHost = window.location.hostname; // This will get the actual server IP/hostname
+            const wsPort = 8765;  // Hard-coded to match admin_config.json
             const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}`;
             
             console.log(`Connecting to WebSocket: ${wsUrl}`);
-            socket = new WebSocket(wsUrl);
             
-            socket.onopen = () => {
-                console.log("WebSocket bağlantısı kuruldu");
-                // Send authentication immediately after connection
-                socket.send(JSON.stringify({
-                    type: "auth",
-                    api_key: "oeks_secret_key_2024"
-                }));
-                updateConnectionStatus('connected');
-            };
-            
-            socket.onmessage = (event) => {
-                // Handle real-time updates
-                try {
-                    const data = JSON.parse(event.data);
-                    
-                    if (data.type === 'screenshot_update') {
-                        // Update specific staff card
-                        const staffId = data.staffId;
-                        const info = data.screenshotInfo;
-                        
-                        // Update staffMembers object
-                        staffMembers[staffId] = info;
-                        
-                        // Update card if visible
-                        const staffCard = document.getElementById(`staff-${staffId}`);
-                        if (staffCard) {
-                            const timestamp = new Date(info.timestamp);
-                            const now = new Date();
-                            const isActive = (now - timestamp) / 1000 < 60;
-                            
-                            staffCard.querySelector('.staff-header').innerHTML = `
-                                <span>
-                                    <span class="status-indicator ${isActive ? 'status-active' : 'status-inactive'}"></span>
-                                    <strong>${info.name || "Bilinmeyen Kullanıcı"}</strong> 
-                                    <span class="badge">${info.division || "Tanımlanmamış"}</span>
-                                </span>
-                                <span>${formatTimeDiff(now, timestamp)} önce</span>
-                            `;
-                            
-                            staffCard.querySelector('.staff-image').src = `${info.path}?t=${Date.now()}`;
-                            staffCard.querySelector('.timestamp').innerHTML = `
-                                <span>${staffId}</span> - ${timestamp.toLocaleString('tr-TR')}
-                            `;
-                            
-                            // If this staff member is being viewed in live view, update that too
-                            if (liveViewStaffId === staffId) {
-                                updateLiveView();
-                            }
-                            
-                            // Increment screenshot count
-                            totalScreenshots++;
-                            document.getElementById('total-screenshots').textContent = totalScreenshots.toString();
-                            
-                            // Update last update time
-                            document.getElementById('last-update').textContent = now.toLocaleTimeString();
-                        }
-                    }
-                } catch (error) {
-                    console.error('WebSocket mesajı işlenirken hata:', error);
+            try {
+                // Close existing socket if open
+                if (socket && socket.readyState !== WebSocket.CLOSED) {
+                    socket.close();
                 }
-            };
-            
-            socket.onclose = (event) => {
-                console.log('WebSocket bağlantısı kapandı:', event.code, event.reason);
-                // Don't change the status to "reconnecting"
-                updateConnectionStatus('connected');
                 
-                // Attempt to reconnect after a delay
-                setTimeout(connectWebSocket, 3000);
-            };
-            
-            socket.onerror = (error) => {
-                console.error('WebSocket hatası:', error);
+                socket = new WebSocket(wsUrl);
+                
+                socket.onopen = () => {
+                    console.log("WebSocket bağlantısı kuruldu");
+                    // Send authentication immediately after connection
+                    socket.send(JSON.stringify({
+                        type: "auth",
+                        api_key: "oeks_secret_key_2024",
+                        staff_id: "admin_panel", // Use a unique ID for the admin panel
+                        name: "Admin Panel",
+                        division: "IT"
+                    }));
+                    updateConnectionStatus('connected');
+                };
+                
+                socket.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log("WebSocket mesajı alındı:", data);
+                        
+                        // Process different message types
+                        if (data.type === "update") {
+                            fetchStaffList();
+                        }
+                    } catch (e) {
+                        console.error("WebSocket mesaj işleme hatası:", e);
+                    }
+                };
+                
+                socket.onclose = (event) => {
+                    console.log(`WebSocket bağlantısı kapandı: ${event.code} ${event.reason}`);
+                    updateConnectionStatus('disconnected');
+                    
+                    // Only reconnect if it was an abnormal closure
+                    if (event.code !== 1000) {
+                        setTimeout(connectWebSocket, 3000);
+                    }
+                };
+                
+                socket.onerror = (error) => {
+                    console.error("WebSocket hatası:", error);
+                    updateConnectionStatus('error');
+                };
+            } catch (error) {
+                console.error("WebSocket connection error:", error);
                 updateConnectionStatus('error');
-            };
+                setTimeout(connectWebSocket, 3000);
+            }
         }
         
         // Initial WebSocket connection
@@ -1449,51 +1485,19 @@
             fetch('/api/staff-list')
                 .then(response => response.json())
                 .then(data => {
-                    const staffContainer = document.getElementById('staff-container');
-                    staffContainer.innerHTML = '';
+                    const oldStaffMembers = {...staffMembers};
+                    updateDashboard(data);
                     
-                    const staffList = data.staffList || [];
-                    const latestScreenshots = data.latestScreenshots || {};
-                    
-                    // Filter staff if search term exists
-                    // ... existing code ...
-                    
-                    // Create a card for each staff member
-                    for (const staffId of filteredStaff) {
-                        const screenshot = latestScreenshots[staffId];
-                        if (!screenshot) continue;
-                        
-                        // Create status indicator and labels
-                        const statusHtml = getStatusIndicator(screenshot.activity_status);
-                        
-                        const card = document.createElement('div');
-                        card.className = 'staff-card';
-                        card.setAttribute('data-staff-id', staffId);
-                        card.setAttribute('data-name', screenshot.name);
-                        card.setAttribute('data-division', screenshot.division);
-                        
-                        card.innerHTML = `
-                            <div class="staff-header">
-                                <h3>${screenshot.name || 'Unknown User'}</h3>
-                                <div class="staff-info">
-                                    <p class="division">${screenshot.division || 'Unassigned'}</p>
-                                    <p class="status">${statusHtml}</p>
-                                </div>
-                            </div>
-                            <div class="screenshot-container">
-                                <img src="${screenshot.path}?t=${new Date().getTime()}" alt="Screenshot from ${screenshot.name}">
-                            </div>
-                            <div class="timestamp">Last update: ${formatTimestamp(screenshot.timestamp)}</div>
-                        `;
-                        
-                        // ... existing code for click events ...
-                        
-                        staffContainer.appendChild(card);
+                    // If we're in a modal view, update the detail page too, but NOT the video
+                    if (liveViewStaffId && staffMembers[liveViewStaffId]) {
+                        // Only update the metadata info
+                        updateDetailInfo(liveViewStaffId);
                     }
-                    
-                    // ... existing code ...
                 })
-                .catch(error => console.error('Error fetching staff list:', error));
+                .catch(error => {
+                    console.error('Veri çekme hatası:', error);
+                    updateConnectionStatus('error');
+                });
         }
 
         // Function to fetch staff history
@@ -1764,20 +1768,22 @@
         function setupVideoErrorHandling(videoElement) {
             videoElement.onerror = function() {
                 console.error('Video loading error:', videoElement.error);
-                // Show fallback content or retry loading
-                const container = videoElement.parentElement;
-                container.innerHTML = `
-                    <div class="error-state">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <p>Video yüklenemedi</p>
-                    </div>
-                `;
+                // Show fallback content without trying to set innerHTML on null
+                if (videoElement.parentElement) {
+                    videoElement.parentElement.innerHTML = `
+                        <div class="error-state">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <p>Video yüklenemedi</p>
+                        </div>
+                    `;
+                }
             };
         }
 
         // Update video source URL construction
         function updateVideoSource(videoElement, staffId) {
             const timestamp = Date.now();
+            // Get the hostname from window.location instead of hardcoding
             const videoHost = window.location.hostname;
             const videoPort = '8080';  // Matches admin_config.json http_port
             const videoUrl = `http://${videoHost}:${videoPort}/videos/${staffId}/latest.mp4?t=${timestamp}`;

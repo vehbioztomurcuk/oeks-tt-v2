@@ -234,12 +234,78 @@ class HTTPHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b"Screenshot not found")
                 return
         
-        # Add new endpoint for video streaming
+        # Add new endpoint for video streaming - improved to handle direct video files
         elif self.path.startswith('/videos/'):
             parsed_url = urlparse(self.path)
             clean_path = parsed_url.path[1:]
             file_path = os.path.join(os.getcwd(), clean_path)
             
+            # Log the requested video path for debugging
+            logger.info(f"Video request: {self.path}, file path: {file_path}")
+            
+            # Check if the path includes 'latest.mp4'
+            if 'latest.mp4' in file_path:
+                # Extract the staff_id
+                parts = clean_path.split('/')
+                if len(parts) >= 2:
+                    staff_id = parts[1]
+                    
+                    # First check in staff subdirectory
+                    staff_dir = os.path.join(videos_dir, staff_id)
+                    logger.info(f"Looking for latest video for staff {staff_id} in {staff_dir}")
+                    
+                    if os.path.exists(staff_dir) and os.path.isdir(staff_dir):
+                        # Find the latest MP4 file
+                        video_files = [f for f in os.listdir(staff_dir) if f.endswith('.mp4')]
+                        if video_files:
+                            # Sort by modification time (newest first)
+                            video_files.sort(key=lambda x: os.path.getmtime(os.path.join(staff_dir, x)), reverse=True)
+                            latest_video = video_files[0]
+                            file_path = os.path.join(staff_dir, latest_video)
+                            logger.info(f"Found latest video: {latest_video}")
+                        else:
+                            logger.warning(f"No video files found for staff {staff_id} in subfolder")
+                            
+                            # Now check main videos directory for files starting with staff_id
+                            matching_files = [f for f in os.listdir(videos_dir) 
+                                            if f.endswith('.mp4') and f.startswith(f"{staff_id}-") 
+                                            and os.path.isfile(os.path.join(videos_dir, f))]
+                            
+                            if matching_files:
+                                # Sort by modification time (newest first)
+                                matching_files.sort(key=lambda x: os.path.getmtime(os.path.join(videos_dir, x)), reverse=True)
+                                latest_video = matching_files[0]
+                                file_path = os.path.join(videos_dir, latest_video)
+                                logger.info(f"Found latest video in main directory: {latest_video}")
+                            else:
+                                logger.warning(f"No video files found for staff {staff_id} in main directory")
+                    else:
+                        logger.warning(f"Staff video directory does not exist: {staff_dir}")
+                        
+                    # Try directly in videos directory since that's how staff_app.py saves them
+                    matching_files = [f for f in os.listdir(videos_dir) 
+                                    if f.endswith('.mp4') and f.startswith(f"{staff_id}-") 
+                                    and os.path.isfile(os.path.join(videos_dir, f))]
+                    
+                    if matching_files:
+                        # Sort by modification time (newest first)
+                        matching_files.sort(key=lambda x: os.path.getmtime(os.path.join(videos_dir, x)), reverse=True)
+                        latest_video = matching_files[0]
+                        file_path = os.path.join(videos_dir, latest_video)
+                        logger.info(f"Found latest video in videos directory: {latest_video}")
+                    else:
+                        logger.warning(f"No video files found for staff {staff_id} anywhere")
+            # Handle case of direct video file request (not "latest.mp4")
+            elif clean_path.count('/') == 1 and clean_path.endswith('.mp4'):
+                # This could be a direct reference to a video file in the root videos directory
+                # like /videos/staff_id-MM-DD-YYYY.mp4
+                video_filename = os.path.basename(clean_path)
+                direct_file_path = os.path.join(videos_dir, video_filename)
+                
+                if os.path.exists(direct_file_path) and os.path.isfile(direct_file_path):
+                    logger.info(f"Found direct video file: {direct_file_path}")
+                    file_path = direct_file_path
+                
             # Check if file exists
             if os.path.exists(file_path) and os.path.isfile(file_path):
                 try:
@@ -249,15 +315,18 @@ class HTTPHandler(BaseHTTPRequestHandler):
                     self.send_header('Content-Length', str(file_size))
                     self.send_header('Accept-Ranges', 'bytes')
                     self.send_header('Access-Control-Allow-Origin', '*')
+                    self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
                     self.end_headers()
                     
                     with open(file_path, 'rb') as f:
                         self.wfile.write(f.read())
+                    logger.info(f"Successfully served video: {file_path}")
                 except Exception as e:
                     logger.error(f"Error streaming video {file_path}: {e}")
                     self.send_error(500, "Internal Server Error")
             else:
                 # Return 404 for missing videos
+                logger.warning(f"Video file not found: {file_path}")
                 self.send_response(404)
                 self.send_header('Content-type', 'text/plain')
                 self.send_header('Access-Control-Allow-Origin', '*')
@@ -433,6 +502,7 @@ def signal_handler(sig, frame):
 def get_staff_list():
     config = load_config()
     videos_dir = config.get("videos_dir", "videos")
+    screenshots_dir = config.get("screenshots_dir", "screenshots")
     
     response = {
         "staffList": [],
@@ -440,42 +510,131 @@ def get_staff_list():
     }
     
     try:
-        for staff_id in os.listdir(videos_dir):
-            staff_dir = os.path.join(videos_dir, staff_id)
-            if not os.path.isdir(staff_dir):
-                continue
+        # Check videos directory for both traditional staff folders and direct video files
+        if os.path.exists(videos_dir):
+            # First check for videos directly in the videos directory (without staff subfolders)
+            direct_video_files = [f for f in os.listdir(videos_dir) 
+                                if f.endswith('.mp4') and os.path.isfile(os.path.join(videos_dir, f))]
             
-            # Get latest video file
-            video_files = [f for f in os.listdir(staff_dir) if f.endswith('.mp4')]
-            latest_video = None
-            if video_files:
-                video_files.sort(reverse=True)
-                latest_video = video_files[0]
+            # Process direct video files
+            for video_file in direct_video_files:
+                # Extract staff_id from filename (staff_id-MM-DD-YYYY.mp4)
+                parts = video_file.split('-')
+                if len(parts) >= 2:
+                    # Handle staff IDs that might contain dashes themselves
+                    staff_id_parts = parts[:-3]  # All parts except the last 3 (MM-DD-YYYY.mp4)
+                    staff_id = '-'.join(staff_id_parts)
+                    
+                    # Only process if it looks like a valid staff ID format
+                    if staff_id:
+                        video_path = f"/videos/{video_file}"
+                        
+                        # Get metadata from screenshots directory
+                        metadata_file = os.path.join(screenshots_dir, staff_id, "metadata.json")
+                        metadata = {
+                            "name": "Unknown User",
+                            "division": "Unassigned",
+                            "activity_status": "inactive",
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        
+                        if os.path.exists(metadata_file):
+                            try:
+                                with open(metadata_file, "r") as f:
+                                    metadata.update(json.load(f))
+                            except:
+                                logger.error(f"Error reading metadata for {staff_id}")
+                        
+                        # Add to response
+                        if staff_id not in response["staffList"]:
+                            response["staffList"].append(staff_id)
+                        
+                        response["staffData"][staff_id] = {
+                            "name": metadata.get("name", "Unknown User"),
+                            "division": metadata.get("division", "Unassigned"),
+                            "recording_status": metadata.get("activity_status", "inactive"),
+                            "timestamp": metadata.get("last_activity", datetime.now().isoformat()),
+                            "video_path": video_path
+                        }
+            
+            # Then check for traditional staff subfolders
+            for staff_id in [d for d in os.listdir(videos_dir) if os.path.isdir(os.path.join(videos_dir, d))]:
+                staff_dir = os.path.join(videos_dir, staff_id)
                 
-            # Get metadata
-            metadata_file = os.path.join(staff_dir, "metadata.json")
-            metadata = {
-                "name": "Unknown User",
-                "division": "Unassigned",
-                "activity_status": "inactive",
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            if os.path.exists(metadata_file):
-                try:
-                    with open(metadata_file, "r") as f:
-                        metadata.update(json.load(f))
-                except:
-                    logger.error(f"Error reading metadata for {staff_id}")
-            
-            response["staffList"].append(staff_id)
-            response["staffData"][staff_id] = {
-                "name": metadata.get("name", "Unknown User"),
-                "division": metadata.get("division", "Unassigned"),
-                "recording_status": metadata.get("activity_status", "inactive"),
-                "timestamp": metadata.get("last_activity", datetime.now().isoformat()),
-                "video_path": f"/videos/{staff_id}/{latest_video}" if latest_video else None
-            }
+                # Get latest video file
+                video_files = [f for f in os.listdir(staff_dir) if f.endswith('.mp4')]
+                latest_video = None
+                video_path = None
+                
+                if video_files:
+                    # Sort by modification time (newest first)
+                    video_files.sort(key=lambda x: os.path.getmtime(os.path.join(staff_dir, x)), reverse=True)
+                    latest_video = video_files[0]
+                    video_path = f"/videos/{staff_id}/{latest_video}"
+                    
+                # Skip if already processed
+                if staff_id in response["staffList"]:
+                    continue
+                    
+                # Get metadata from screenshots directory
+                metadata_file = os.path.join(screenshots_dir, staff_id, "metadata.json")
+                metadata = {
+                    "name": "Unknown User",
+                    "division": "Unassigned",
+                    "activity_status": "inactive",
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                if os.path.exists(metadata_file):
+                    try:
+                        with open(metadata_file, "r") as f:
+                            metadata.update(json.load(f))
+                    except:
+                        logger.error(f"Error reading metadata for {staff_id}")
+                
+                response["staffList"].append(staff_id)
+                response["staffData"][staff_id] = {
+                    "name": metadata.get("name", "Unknown User"),
+                    "division": metadata.get("division", "Unassigned"),
+                    "recording_status": metadata.get("activity_status", "inactive"),
+                    "timestamp": metadata.get("last_activity", datetime.now().isoformat()),
+                    "video_path": video_path
+                }
+        
+        # Also check screenshots directory for any staff without videos
+        if os.path.exists(screenshots_dir):
+            for staff_id in os.listdir(screenshots_dir):
+                staff_dir = os.path.join(screenshots_dir, staff_id)
+                if not os.path.isdir(staff_dir):
+                    continue
+                
+                # Skip if already processed from videos dir
+                if staff_id in response["staffList"]:
+                    continue
+                
+                metadata_file = os.path.join(staff_dir, "metadata.json")
+                metadata = {
+                    "name": "Unknown User",
+                    "division": "Unassigned",
+                    "activity_status": "inactive",
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                if os.path.exists(metadata_file):
+                    try:
+                        with open(metadata_file, "r") as f:
+                            metadata.update(json.load(f))
+                    except:
+                        logger.error(f"Error reading metadata for {staff_id}")
+                
+                response["staffList"].append(staff_id)
+                response["staffData"][staff_id] = {
+                    "name": metadata.get("name", "Unknown User"),
+                    "division": metadata.get("division", "Unassigned"),
+                    "recording_status": metadata.get("activity_status", "inactive"),
+                    "timestamp": metadata.get("last_activity", datetime.now().isoformat()),
+                    "video_path": None  # No video available
+                }
     
     except Exception as e:
         logger.error(f"Error getting staff list: {e}")
