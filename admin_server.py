@@ -23,7 +23,11 @@ logger = logging.getLogger('combined_server')
 def load_config():
     try:
         with open('admin_config.json', 'r') as f:
-            return json.load(f)
+            config = json.load(f)
+            # Add default videos_dir if not present
+            if 'videos_dir' not in config:
+                config['videos_dir'] = 'videos'
+            return config
     except FileNotFoundError:
         logger.error("Configuration file not found. Creating default config.")
         default_config = {
@@ -68,130 +72,46 @@ class HTTPHandler(BaseHTTPRequestHandler):
         
         # API endpoint for staff list
         elif self.path == '/api/staff-list':
+            response = {
+                "staffList": [],
+                "staffData": {}
+            }
+            
+            if os.path.exists(screenshots_dir):
+                for staff_id in os.listdir(screenshots_dir):
+                    staff_dir = os.path.join(screenshots_dir, staff_id)
+                    if os.path.isdir(staff_dir):
+                        response["staffList"].append(staff_id)
+                        
+                        # Get staff metadata
+                        metadata_file = os.path.join(staff_dir, "metadata.json")
+                        name = "Unknown User"
+                        division = "Unassigned"
+                        recording_status = "inactive"
+                        
+                        if os.path.exists(metadata_file):
+                            try:
+                                with open(metadata_file, "r") as f:
+                                    metadata = json.load(f)
+                                    name = metadata.get("name", name)
+                                    division = metadata.get("division", division)
+                                    recording_status = metadata.get("recording_status", "inactive")
+                            except:
+                                logger.error(f"Error reading metadata for {staff_id}")
+                        
+                        # Add staff data
+                        response["staffData"][staff_id] = {
+                            "name": name,
+                            "division": division,
+                            "recording_status": recording_status,
+                            "timestamp": datetime.now().isoformat(),
+                            "video_path": f"/videos/{staff_id}/latest.mp4"
+                        }
+            
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
-            
-            staff_list = []
-            staff_data = {}
-            
-            # Check screenshots directory
-            if os.path.exists(screenshots_dir):
-                for staff_id in os.listdir(screenshots_dir):
-                    staff_dir = os.path.join(screenshots_dir, staff_id)
-                    
-                    if os.path.isdir(staff_dir):
-                        staff_list.append(staff_id)
-                        
-                        # Get staff metadata if available
-                        name = "Unknown User"
-                        division = "Unassigned"
-                        activity_status = "unknown"
-                        last_activity = None
-                        
-                        metadata_file = os.path.join(staff_dir, "metadata.json")
-                        if os.path.exists(metadata_file):
-                            try:
-                                with open(metadata_file, "r") as f:
-                                    staff_metadata = json.load(f)
-                                    name = staff_metadata.get("name", name)
-                                    division = staff_metadata.get("division", division)
-                                    
-                                    # Get activity status or calculate it
-                                    activity_status = staff_metadata.get("activity_status", "unknown")
-                                    last_activity_str = staff_metadata.get("last_activity")
-                                    
-                                    if last_activity_str:
-                                        try:
-                                            last_activity = datetime.fromisoformat(last_activity_str)
-                                            # Calculate inactive status if not seen for over 1 minute
-                                            time_diff = (datetime.now() - last_activity).total_seconds()
-                                            if time_diff > 60:
-                                                activity_status = "inactive"
-                                        except ValueError:
-                                            logger.error(f"Invalid timestamp format in metadata for {staff_id}")
-                            except (json.JSONDecodeError, IOError) as e:
-                                logger.error(f"Error reading metadata for {staff_id}: {e}")
-                        
-                        # Find the latest screenshot for this staff member
-                        screenshot_files = [f for f in os.listdir(staff_dir) if f.endswith('.jpg') and f != 'latest.jpg']
-                        
-                        if screenshot_files:
-                            # Sort by modification time (newest first)
-                            screenshot_files.sort(key=lambda x: os.path.getmtime(os.path.join(staff_dir, x)), reverse=True)
-                            latest_file = screenshot_files[0]
-                            file_path = os.path.join(staff_dir, latest_file)
-                            
-                            # Create link to the latest file
-                            latest_link = os.path.join(staff_dir, 'latest.jpg')
-                            try:
-                                if os.path.exists(latest_link):
-                                    os.remove(latest_link)
-                                if hasattr(os, 'symlink'):
-                                    os.symlink(latest_file, latest_link)
-                                else:
-                                    # If symlinks not supported, just copy the file
-                                    with open(file_path, 'rb') as src, open(latest_link, 'wb') as dst:
-                                        dst.write(src.read())
-                                logger.info(f"Updated latest.jpg for {staff_id}")
-                            except Exception as e:
-                                logger.error(f"Failed to create latest.jpg: {e}")
-                            
-                            # Get modified time as ISO string
-                            mod_time = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
-                            
-                            staff_data[staff_id] = {
-                                "path": f"/screenshots/{staff_id}/latest.jpg",
-                                "timestamp": mod_time,
-                                "name": name,
-                                "division": division,
-                                "activity_status": activity_status
-                            }
-            
-            # Check videos directory
-            if os.path.exists(videos_dir):
-                for staff_id in os.listdir(videos_dir):
-                    staff_dir = os.path.join(videos_dir, staff_id)
-                    
-                    if os.path.isdir(staff_dir):
-                        staff_list.append(staff_id)
-                        
-                        # Get latest video file
-                        video_files = [f for f in os.listdir(staff_dir) if f.endswith('.mp4')]
-                        if video_files:
-                            latest_video = max(video_files, key=lambda x: os.path.getmtime(os.path.join(staff_dir, x)))
-                            video_path = os.path.join(staff_dir, latest_video)
-                            
-                            # Get metadata
-                            metadata_file = os.path.join(staff_dir, "metadata.json")
-                            name = "Unknown User"
-                            division = "Unassigned"
-                            recording_status = "unknown"
-                            
-                            if os.path.exists(metadata_file):
-                                try:
-                                    with open(metadata_file, "r") as f:
-                                        metadata = json.load(f)
-                                        name = metadata.get("name", name)
-                                        division = metadata.get("division", division)
-                                        recording_status = metadata.get("recording_status", "unknown")
-                                except:
-                                    logger.error(f"Error reading metadata for {staff_id}")
-                            
-                            staff_data[staff_id] = {
-                                "video_path": f"/videos/{staff_id}/{latest_video}",
-                                "timestamp": datetime.fromtimestamp(os.path.getmtime(video_path)).isoformat(),
-                                "name": name,
-                                "division": division,
-                                "recording_status": recording_status
-                            }
-            
-            response = {
-                "staffList": staff_list,
-                "staffData": staff_data
-            }
-            
             self.wfile.write(json.dumps(response).encode())
             return
         
@@ -506,9 +426,11 @@ async def run_server():
     ws_port = config["ws_port"]
     http_port = config["http_port"]
     
-    # Ensure screenshots directory exists
+    # Ensure directories exist
     screenshots_dir = config["screenshots_dir"]
+    videos_dir = config["videos_dir"]
     os.makedirs(screenshots_dir, exist_ok=True)
+    os.makedirs(videos_dir, exist_ok=True)
     
     # Start HTTP server in a separate thread
     http_server = HTTPServerThread(host, http_port)

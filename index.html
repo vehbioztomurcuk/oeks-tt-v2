@@ -1175,14 +1175,14 @@
             let activeCount = 0;
             
             // Count active staff
-            data.staffList.forEach(staffId => {
-                const staff = data.latestScreenshots[staffId];
-                const timestamp = new Date(staff.timestamp);
-                const timeDiff = Math.round((now - timestamp) / 1000);
-                if (timeDiff < 60) activeCount++;
+            Object.keys(data.staffData || {}).forEach(staffId => {
+                const staff = data.staffData[staffId];
+                if (staff && staff.recording_status === 'active') {
+                    activeCount++;
+                }
             });
             
-            document.getElementById('total-staff').textContent = data.staffList.length.toString();
+            document.getElementById('total-staff').textContent = data.staffList ? data.staffList.length.toString() : '0';
             document.getElementById('active-staff').textContent = activeCount.toString();
             document.getElementById('last-update').textContent = now.toLocaleTimeString();
             document.getElementById('total-screenshots').textContent = totalScreenshots.toString();
@@ -1237,26 +1237,12 @@
         
         // Fallback to directory scan if API isn't available
         function fallbackToDirectoryScan() {
-            // Use placeholder data
-            const demoData = {
-                staffList: ['demo_user_1', 'demo_user_2'],
-                latestScreenshots: {
-                    'demo_user_1': {
-                        path: '/screenshots/demo_user_1/latest.jpg',
-                        timestamp: new Date().toISOString(),
-                        name: "Demo Kullanıcı 1",
-                        division: "Pazarlama"
-                    },
-                    'demo_user_2': {
-                        path: '/screenshots/demo_user_2/latest.jpg',
-                        timestamp: new Date(Date.now() - 30000).toISOString(),
-                        name: "Demo Kullanıcı 2",
-                        division: "Satış"
-                    }
-                }
+            // Use empty data structure instead of demo data
+            const emptyData = {
+                staffList: [],
+                staffData: {}
             };
-            
-            updateDashboard(demoData);
+            updateDashboard(emptyData);
         }
         
         // Update the dashboard with new data
@@ -1352,10 +1338,9 @@
             }
             
             try {
-                // Create new WebSocket connection using the correct port
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const host = window.location.hostname || 'localhost';
-                const wsPort = '8765'; // Changed from 8080 to match admin_server.py WebSocket port
+                const wsPort = '8765';
                 const wsUrl = `${protocol}//${host}:${wsPort}`;
                 
                 console.log("Attempting WebSocket connection to:", wsUrl);
@@ -1363,6 +1348,11 @@
                 
                 socket.onopen = () => {
                     console.log('WebSocket bağlantısı kuruldu');
+                    // Send authentication immediately after connection
+                    socket.send(JSON.stringify({
+                        type: "auth",
+                        api_key: "oeks_secret_key_2024"
+                    }));
                     updateConnectionStatus('connected');
                 };
                 

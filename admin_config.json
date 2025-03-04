@@ -4,5 +4,6 @@
     "ws_port": 8765,
     "http_port": 8080,
     "screenshots_dir": "screenshots",
+    "videos_dir": "videos",
     "retention_days": 30
 } 
