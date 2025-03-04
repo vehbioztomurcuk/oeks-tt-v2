@@ -429,7 +429,9 @@ async def handle_client(websocket):
                 # Save the video data
                 videos_dir = config["videos_dir"]
                 staff_videos_dir = ensure_directories(videos_dir, staff_id)
-                file_path = os.path.join(videos_dir, video_file)
+                
+                # Save to staff subdirectory
+                file_path = os.path.join(staff_videos_dir, os.path.basename(video_file))
                 
                 try:
                     # Write the video data to file
@@ -438,12 +440,22 @@ async def handle_client(websocket):
                     
                     logger.info(f"Saved video file: {file_path} ({len(message)} bytes)")
                     
+                    # Create a copy as latest.mp4
+                    latest_path = os.path.join(staff_videos_dir, "latest.mp4")
+                    try:
+                        if os.path.exists(latest_path):
+                            os.remove(latest_path)
+                        shutil.copy2(file_path, latest_path)
+                        logger.info(f"Created latest.mp4 for {staff_id}")
+                    except Exception as e:
+                        logger.error(f"Error creating latest.mp4: {e}")
+                    
                     # Update staff metadata
                     staff_info["last_activity"] = datetime.now().isoformat()
                     staff_info["activity_status"] = "active"
                     
                     # Write metadata
-                    metadata_file = os.path.join(videos_dir, staff_id, "metadata.json")
+                    metadata_file = os.path.join(staff_videos_dir, "metadata.json")
                     with open(metadata_file, "w") as f:
                         json.dump(staff_info, f)
                         
@@ -611,10 +623,13 @@ def get_staff_list():
         logger.warning(f"Videos directory not found: {videos_dir}")
         return []
     
-    # Get all subdirectories in the videos directory (each is a staff ID)
+    # First, get all subdirectories in the videos directory (each is a staff ID)
     staff_dirs = [d for d in os.listdir(videos_dir) if os.path.isdir(os.path.join(videos_dir, d))]
+    staff_ids_found = set()
     
+    # Process staff dirs
     for staff_id in staff_dirs:
+        staff_ids_found.add(staff_id)
         staff_dir = os.path.join(videos_dir, staff_id)
         metadata_file = os.path.join(staff_dir, "metadata.json")
         
@@ -638,35 +653,25 @@ def get_staff_list():
                 logger.error(f"Error reading metadata for {staff_id}: {e}")
         
         # Find the latest video file
-        mp4_files = [f for f in os.listdir(staff_dir) if f.endswith(".mp4")]
-        if mp4_files:
-            # Sort by creation time, newest first
-            mp4_files.sort(key=lambda x: os.path.getctime(os.path.join(staff_dir, x)), reverse=True)
-            latest_video = mp4_files[0]
-            
-            # Create a symlink or copy for "latest.mp4"
-            latest_path = os.path.join(staff_dir, "latest.mp4")
-            video_path = os.path.join(staff_dir, latest_video)
-            
-            try:
-                # If a symlink/file already exists, remove it
-                if os.path.exists(latest_path):
-                    os.remove(latest_path)
-                
-                # Create a copy of the latest video as "latest.mp4"
-                shutil.copy2(video_path, latest_path)
+        # First, check for latest.mp4
+        latest_mp4 = os.path.join(staff_dir, "latest.mp4")
+        if os.path.exists(latest_mp4) and os.path.isfile(latest_mp4):
+            staff_info["video_path"] = f"videos/{staff_id}/latest.mp4"
+        else:
+            # Look for other MP4 files
+            mp4_files = [f for f in os.listdir(staff_dir) if f.endswith(".mp4")]
+            if mp4_files:
+                # Sort by creation time, newest first
+                mp4_files.sort(key=lambda x: os.path.getctime(os.path.join(staff_dir, x)), reverse=True)
+                latest_video = mp4_files[0]
                 
                 # Set relative path for browser to access
-                staff_info["video_path"] = f"videos/{staff_id}/latest.mp4"
+                staff_info["video_path"] = f"videos/{staff_id}/{latest_video}"
                 
                 logger.debug(f"Latest video for {staff_id}: {latest_video}")
-            except Exception as e:
-                logger.error(f"Error creating latest.mp4 for {staff_id}: {e}")
-                # Still set a path even if we couldn't create the link
-                staff_info["video_path"] = f"videos/{staff_id}/{latest_video}"
-        else:
-            logger.warning(f"No videos found for staff {staff_id}")
-            staff_info["video_path"] = None
+            else:
+                logger.warning(f"No videos found for staff {staff_id}")
+                staff_info["video_path"] = None
         
         # Calculate inactivity
         if staff_info.get("last_activity"):
@@ -682,6 +687,34 @@ def get_staff_list():
                 logger.error(f"Error calculating inactivity: {e}")
         
         staff_list.append(staff_info)
+    
+    # Now, look for video files directly in the videos directory
+    # This handles videos that might have been saved without the proper directory structure
+    direct_video_files = [f for f in os.listdir(videos_dir) if f.endswith('.mp4') and os.path.isfile(os.path.join(videos_dir, f))]
+    
+    for video_file in direct_video_files:
+        # Try to extract staff_id from filename (e.g., staff_pc_141-03-04-2025.mp4)
+        parts = video_file.split('-')
+        if len(parts) >= 1:
+            file_staff_id = parts[0]
+            
+            # If we already have this staff ID from a directory, skip
+            if file_staff_id in staff_ids_found:
+                continue
+            
+            staff_ids_found.add(file_staff_id)
+            
+            # Default values for staff member with video but no directory
+            staff_info = {
+                "staff_id": file_staff_id,
+                "name": "Unknown User",
+                "division": "Unassigned",
+                "activity_status": "active",  # Assume active if there's a video
+                "last_activity": datetime.fromtimestamp(os.path.getctime(os.path.join(videos_dir, video_file))).isoformat(),
+                "video_path": f"videos/{video_file}"
+            }
+            
+            staff_list.append(staff_info)
     
     # Sort by status (active first) then by name
     staff_list.sort(key=lambda x: (0 if x["activity_status"] == "active" else 1, x["name"]))

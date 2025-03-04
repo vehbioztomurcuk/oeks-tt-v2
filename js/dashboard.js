@@ -228,148 +228,142 @@ function fallbackToDirectoryScan() {
  * @param {Object} data - Staff data from API
  */
 function updateDashboard(data) {
+    // Update the staff grid with the latest data
     const staffGrid = document.getElementById('staff-grid');
+    const { staffList, staffData } = data;
     
-    // Clear lists of divisions and names for filters
-    divisionsList.clear();
-    namesList.clear();
+    // Clear any previous content
+    staffGrid.innerHTML = '';
     
-    // Store data in our staffMembers object and collect division/name data
-    data.staffList.forEach(staffId => {
-        const staffInfo = data.staffData[staffId];
-        staffMembers[staffId] = staffInfo;
-        
-        if (staffInfo.division) divisionsList.add(staffInfo.division);
-        if (staffInfo.name) namesList.add(staffInfo.name);
-    });
-    
-    // Update filter dropdowns
-    updateFilterOptions();
-    
-    // Clear the grid if we have staff members
-    if (data.staffList && data.staffList.length > 0) {
-        staffGrid.innerHTML = '';
+    // If no staff members found, show empty state
+    if (staffList.length === 0) {
+        const emptyState = `
+            <div class="staff-card">
+                <div class="staff-header">
+                    <span><span class="status-indicator status-inactive"></span> Veri Bekleniyor...</span>
+                </div>
+                <div class="empty-state">
+                    <i class="fas fa-spinner refresh-animation"></i>
+                    <p>Henüz bağlı personel yok</p>
+                </div>
+            </div>
+        `;
+        staffGrid.innerHTML = emptyState;
+        return;
     }
     
-    // Add staff cards
-    data.staffList.forEach(staffId => {
-        const staffInfo = data.staffData[staffId];
-        const timestamp = new Date(staffInfo.timestamp);
-        const now = new Date();
+    // Keep track of total staff and active staff for stats
+    let totalStaff = staffList.length;
+    let activeStaff = 0;
+    
+    // Process each staff member
+    staffList.forEach(staffId => {
+        const staffInfo = staffData[staffId];
         
-        // Get name and division with fallbacks
-        const name = staffInfo.name || "Bilinmeyen Kullanıcı";
-        const division = staffInfo.division || "Tanımlanmamış";
-        
-        // Create or update staff card
-        let staffCard = document.getElementById(`staff-${staffId}`);
-        
-        if (!staffCard) {
-            staffCard = document.createElement('div');
-            staffCard.id = `staff-${staffId}`;
-            staffCard.className = 'staff-card';
-            staffCard.dataset.staffId = staffId;
-            staffGrid.appendChild(staffCard);
-            
-            staffCard.addEventListener('click', () => openModal(staffId));
+        // Count active staff
+        if (staffInfo.recording_status === 'active') {
+            activeStaff++;
         }
         
-        // Determine if we have a valid video path
+        // Determine if the video path is valid
         const hasValidVideo = staffInfo.video_path && 
-                           staffInfo.video_path !== "null" && 
-                           staffInfo.video_path !== null &&
-                           !staffInfo.video_path.includes("/null");
+                             staffInfo.video_path !== "null" && 
+                             staffInfo.video_path !== null && 
+                             !staffInfo.video_path.includes("/null");
         
         console.log(`Staff ${staffId} video path: ${staffInfo.video_path}, valid: ${hasValidVideo}`);
         
-        // Create HTML for the video container
-        let videoHTML;
-        
-        // For testing purpose, let's create a placeholder video with a solid color background
-        // This will help us verify that the video element itself works correctly
-        if (!hasValidVideo && staffId === "staff_pc_141") {
-            console.log("Creating test video for staff_pc_141");
-            videoHTML = `
-                <div class="video-container">
-                    <div style="background-color:#3498db; width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:white;">
-                        <div style="text-align:center;">
-                            <div>Test Video</div>
-                            <div>No real video file found</div>
-                            <div>Please run staff_app.py</div>
-                        </div>
-                    </div>
-                    <div class="video-status">${staffInfo.recording_status === 'active' ? 'Aktif' : 'İnaktif'}</div>
-                    <div class="video-timestamp">${timestamp.toLocaleTimeString('tr-TR')}</div>
+        // Create card HTML
+        let cardHTML = `
+            <div class="staff-card" data-staff-id="${staffId}" data-name="${staffInfo.name}" data-division="${staffInfo.division}">
+                <div class="staff-header">
+                    <span>
+                        <span class="status-indicator status-${staffInfo.recording_status}"></span>
+                        ${staffInfo.name}
+                    </span>
+                    <span class="staff-division">${staffInfo.division}</span>
                 </div>
-            `;
-        } else if (hasValidVideo) {
-            // Ensure we don't have duplicate timestamp parameters
-            const videoUrl = staffInfo.video_path.includes('?') 
-                ? staffInfo.video_path.split('?')[0] + `?t=${Date.now()}` 
-                : `${staffInfo.video_path}?t=${Date.now()}`;
+                <div class="video-container" onclick="openModal('${staffId}')">
+        `;
+        
+        // Add video or placeholder based on video path
+        if (hasValidVideo) {
+            // Get a clean path and timestamp for cache busting
+            const timestamp = new Date().getTime();
+            const videoPath = staffInfo.video_path.includes('?') 
+                ? staffInfo.video_path + '&t=' + timestamp 
+                : staffInfo.video_path + '?t=' + timestamp;
                 
-            videoHTML = `
-                <div class="video-container">
-                    <video class="staff-video" autoplay muted loop playsinline>
-                        <source src="${videoUrl}" type="video/mp4">
-                    </video>
-                    <div class="video-status">${staffInfo.recording_status === 'active' ? 'Kayıt' : 'Beklemede'}</div>
-                    <div class="video-timestamp">${timestamp.toLocaleTimeString('tr-TR')}</div>
+            cardHTML += `
+                <video autoplay muted loop playsinline>
+                    <source src="${videoPath}" type="video/mp4">
+                </video>
+                <div class="overlay">
+                    <i class="fas fa-search-plus"></i>
                 </div>
             `;
         } else {
-            // Show a placeholder for staff with no video
-            videoHTML = `
-                <div class="video-container no-video">
-                    <div class="empty-state">
-                        <i class="fas fa-video-slash"></i>
-                        <p>Video yok</p>
+            // If staff is staff_pc_141, create test video for debugging
+            if (staffId === 'staff_pc_141') {
+                console.log("Creating test video for staff_pc_141");
+                cardHTML += `
+                    <div class="placeholder-video" style="background-color: #333;">
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; text-align: center;">
+                            <i class="fas fa-video-slash" style="font-size: 2rem;"></i>
+                            <p>Video yok</p>
+                            <p>İzleme Durumu: ${staffInfo.recording_status}</p>
+                            <p>${new Date(staffInfo.timestamp).toLocaleTimeString('tr-TR')}</p>
+                        </div>
                     </div>
-                    <div class="video-status">${staffInfo.recording_status === 'active' ? 'Bağlı' : 'Bağlı Değil'}</div>
-                    <div class="video-timestamp">${timestamp.toLocaleTimeString('tr-TR')}</div>
-                </div>
-            `;
+                    <div class="overlay">
+                        <i class="fas fa-search-plus"></i>
+                    </div>
+                `;
+            } else {
+                // For other staff members, just show the placeholder
+                cardHTML += `
+                    <div class="placeholder-video">
+                        <div class="no-video-message">
+                            <i class="fas fa-video-slash"></i>
+                            <p>Video yok</p>
+                            <p>İzleme Durumu: ${staffInfo.recording_status}</p>
+                            <p>${new Date(staffInfo.timestamp).toLocaleTimeString('tr-TR')}</p>
+                        </div>
+                    </div>
+                    <div class="overlay">
+                        <i class="fas fa-search-plus"></i>
+                    </div>
+                `;
+            }
         }
         
-        // Update card content
-        staffCard.innerHTML = `
-            <div class="staff-header">
-                <span>
-                    <span class="status-indicator ${staffInfo.recording_status === 'active' ? 'status-active' : 'status-inactive'}"></span>
-                    <strong>${name}</strong> <span class="badge">${division}</span>
-                </span>
-                <span>${formatTimeDiff(now, timestamp)} önce</span>
-            </div>
-            ${videoHTML}
-            <div class="timestamp">
-                <span>${staffId}</span> - ${timestamp.toLocaleString('tr-TR')}
+        // Close video container and card
+        cardHTML += `
+                </div>
+                <div class="staff-footer">
+                    <span class="staff-info">
+                        <i class="fas fa-clock"></i> ${formatTimeAgo(staffInfo.timestamp)}
+                    </span>
+                    <button class="view-btn" onclick="openModal('${staffId}')">
+                        <i class="fas fa-eye"></i> İzle
+                    </button>
+                </div>
             </div>
         `;
         
-        // Set up error handling for videos that actually exist
-        if (hasValidVideo) {
-            const video = staffCard.querySelector('.staff-video');
-            if (video) {
-                video.onerror = function() {
-                    const container = this.closest('.video-container');
-                    if (container) {
-                        container.innerHTML = `
-                            <div style="display:flex;height:100%;align-items:center;justify-content:center;background:#111;color:#666;">
-                                <div style="text-align:center;">
-                                    <i class="fas fa-video-slash" style="font-size:24px;margin-bottom:5px;"></i>
-                                    <p style="font-size:12px;">Video yüklenemedi</p>
-                                </div>
-                            </div>
-                            <div class="video-status">${staffInfo.recording_status === 'active' ? 'Kayıt' : 'Beklemede'}</div>
-                            <div class="video-timestamp">${timestamp.toLocaleTimeString('tr-TR')}</div>
-                        `;
-                    }
-                };
-            }
-        }
+        // Add to grid
+        staffGrid.innerHTML += cardHTML;
     });
     
-    // Apply filters
+    // Update stats
+    updateStats({
+        totalStaff,
+        activeStaff,
+        lastUpdate: new Date().toLocaleTimeString('tr-TR'),
+        totalScreenshots
+    });
+    
+    // Apply any active filters
     applyFilters();
 }
 
@@ -416,42 +410,20 @@ function setupRefresh() {
  * Initialize dashboard controls
  */
 function initializeDashboardControls() {
-    // Set up refresh interval selector
-    const refreshSelector = document.getElementById('refresh-interval');
-    refreshSelector.addEventListener('change', () => {
-        refreshRate = parseInt(refreshSelector.value);
-        setupRefresh();
-    });
+    // Set up event listeners for filters
+    document.getElementById('division-filter').addEventListener('change', applyFilters);
+    document.getElementById('name-filter').addEventListener('change', applyFilters);
+    document.getElementById('status-filter').addEventListener('change', applyFilters);
+    document.getElementById('search-input').addEventListener('input', applyFilters);
     
-    // Set up manual refresh button
+    // Set up refresh button
     document.getElementById('refresh-btn').addEventListener('click', () => {
-        const icon = document.querySelector('#refresh-btn i');
-        icon.classList.add('refresh-animation');
-        fetchStaffData().finally(() => {
-            setTimeout(() => {
-                icon.classList.remove('refresh-animation');
-            }, 500);
-        });
+        updateStaffList();
     });
     
-    // Set up filters
-    document.getElementById('division-filter').addEventListener('change', (e) => {
-        filters.division = e.target.value;
-        applyFilters();
-    });
-    
-    document.getElementById('name-filter').addEventListener('change', (e) => {
-        filters.name = e.target.value;
-        applyFilters();
-    });
-    
-    document.getElementById('status-filter').addEventListener('change', (e) => {
-        filters.status = e.target.value;
-        applyFilters();
-    });
-    
-    document.getElementById('search-input').addEventListener('input', (e) => {
-        filters.search = e.target.value.toLowerCase();
+    // Set up refresh interval dropdown
+    document.getElementById('refresh-interval').addEventListener('change', function() {
+        setupRefresh();
         applyFilters();
     });
 } 
