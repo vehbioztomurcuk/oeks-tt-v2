@@ -1332,102 +1332,89 @@
         let socket;
         
         function connectWebSocket() {
-            // Close any existing connections
-            if (socket && socket.readyState !== WebSocket.CLOSED) {
-                socket.close();
-            }
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsHost = window.location.hostname;
+            const wsPort = '8765'; // Use the correct WebSocket port
+            const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}`;
             
-            try {
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const host = window.location.hostname || 'localhost';
-                const wsPort = '8765';
-                const wsUrl = `${protocol}//${host}:${wsPort}`;
-                
-                console.log("Attempting WebSocket connection to:", wsUrl);
-                socket = new WebSocket(wsUrl);
-                
-                socket.onopen = () => {
-                    console.log('WebSocket bağlantısı kuruldu');
-                    // Send authentication immediately after connection
-                    socket.send(JSON.stringify({
-                        type: "auth",
-                        api_key: "oeks_secret_key_2024"
-                    }));
-                    updateConnectionStatus('connected');
-                };
-                
-                socket.onmessage = (event) => {
-                    // Handle real-time updates
-                    try {
-                        const data = JSON.parse(event.data);
-                        
-                        if (data.type === 'screenshot_update') {
-                            // Update specific staff card
-                            const staffId = data.staffId;
-                            const info = data.screenshotInfo;
-                            
-                            // Update staffMembers object
-                            staffMembers[staffId] = info;
-                            
-                            // Update card if visible
-                            const staffCard = document.getElementById(`staff-${staffId}`);
-                            if (staffCard) {
-                                const timestamp = new Date(info.timestamp);
-                                const now = new Date();
-                                const isActive = (now - timestamp) / 1000 < 60;
-                                
-                                staffCard.querySelector('.staff-header').innerHTML = `
-                                    <span>
-                                        <span class="status-indicator ${isActive ? 'status-active' : 'status-inactive'}"></span>
-                                        <strong>${info.name || "Bilinmeyen Kullanıcı"}</strong> 
-                                        <span class="badge">${info.division || "Tanımlanmamış"}</span>
-                                    </span>
-                                    <span>${formatTimeDiff(now, timestamp)} önce</span>
-                                `;
-                                
-                                staffCard.querySelector('.staff-image').src = `${info.path}?t=${Date.now()}`;
-                                staffCard.querySelector('.timestamp').innerHTML = `
-                                    <span>${staffId}</span> - ${timestamp.toLocaleString('tr-TR')}
-                                `;
-                                
-                                // If this staff member is being viewed in live view, update that too
-                                if (liveViewStaffId === staffId) {
-                                    updateLiveView();
-                                }
-                                
-                                // Increment screenshot count
-                                totalScreenshots++;
-                                document.getElementById('total-screenshots').textContent = totalScreenshots.toString();
-                                
-                                // Update last update time
-                                document.getElementById('last-update').textContent = now.toLocaleTimeString();
-                            }
-                        }
-                    } catch (error) {
-                        console.error('WebSocket mesajı işlenirken hata:', error);
-                    }
-                };
-                
-                socket.onclose = (event) => {
-                    console.log('WebSocket bağlantısı kapandı:', event.code, event.reason);
-                    // Don't change the status to "reconnecting"
-                    updateConnectionStatus('connected');
+            console.log(`Attempting WebSocket connection to: ${wsUrl}`);
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                console.log("WebSocket bağlantısı kuruldu");
+                // Send authentication immediately after connection
+                socket.send(JSON.stringify({
+                    type: "auth",
+                    api_key: "oeks_secret_key_2024"
+                }));
+                updateConnectionStatus('connected');
+            };
+            
+            socket.onmessage = (event) => {
+                // Handle real-time updates
+                try {
+                    const data = JSON.parse(event.data);
                     
-                    // Attempt to reconnect after a delay
-                    setTimeout(connectWebSocket, 3000);
-                };
+                    if (data.type === 'screenshot_update') {
+                        // Update specific staff card
+                        const staffId = data.staffId;
+                        const info = data.screenshotInfo;
+                        
+                        // Update staffMembers object
+                        staffMembers[staffId] = info;
+                        
+                        // Update card if visible
+                        const staffCard = document.getElementById(`staff-${staffId}`);
+                        if (staffCard) {
+                            const timestamp = new Date(info.timestamp);
+                            const now = new Date();
+                            const isActive = (now - timestamp) / 1000 < 60;
+                            
+                            staffCard.querySelector('.staff-header').innerHTML = `
+                                <span>
+                                    <span class="status-indicator ${isActive ? 'status-active' : 'status-inactive'}"></span>
+                                    <strong>${info.name || "Bilinmeyen Kullanıcı"}</strong> 
+                                    <span class="badge">${info.division || "Tanımlanmamış"}</span>
+                                </span>
+                                <span>${formatTimeDiff(now, timestamp)} önce</span>
+                            `;
+                            
+                            staffCard.querySelector('.staff-image').src = `${info.path}?t=${Date.now()}`;
+                            staffCard.querySelector('.timestamp').innerHTML = `
+                                <span>${staffId}</span> - ${timestamp.toLocaleString('tr-TR')}
+                            `;
+                            
+                            // If this staff member is being viewed in live view, update that too
+                            if (liveViewStaffId === staffId) {
+                                updateLiveView();
+                            }
+                            
+                            // Increment screenshot count
+                            totalScreenshots++;
+                            document.getElementById('total-screenshots').textContent = totalScreenshots.toString();
+                            
+                            // Update last update time
+                            document.getElementById('last-update').textContent = now.toLocaleTimeString();
+                        }
+                    }
+                } catch (error) {
+                    console.error('WebSocket mesajı işlenirken hata:', error);
+                }
+            };
+            
+            socket.onclose = (event) => {
+                console.log('WebSocket bağlantısı kapandı:', event.code, event.reason);
+                // Don't change the status to "reconnecting"
+                updateConnectionStatus('connected');
                 
-                socket.onerror = (error) => {
-                    console.error('WebSocket hatası:', error);
-                    updateConnectionStatus('error');
-                };
-            } catch (error) {
-                console.error("WebSocket connection error:", error);
+                // Attempt to reconnect after a delay
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            socket.onerror = (error) => {
+                console.error('WebSocket hatası:', error);
                 updateConnectionStatus('error');
-                
-                // Retry connection after delay
-                setTimeout(connectWebSocket, 5000);
-            }
+            };
         }
         
         // Initial WebSocket connection
@@ -1785,6 +1772,14 @@
                     </div>
                 `;
             };
+        }
+
+        // Update video source URL construction
+        function updateVideoSource(videoElement, staffId) {
+            const timestamp = Date.now();
+            const videoHost = window.location.hostname;
+            const videoPort = '8080'; // HTTP port
+            videoElement.src = `http://${videoHost}:${videoPort}/videos/${staffId}/latest.mp4?t=${timestamp}`;
         }
     </script>
 </body>

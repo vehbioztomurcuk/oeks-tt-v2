@@ -105,6 +105,7 @@ class VideoRecorder:
         self.quality = quality  # Higher number = lower quality (23 is a good balance)
         self.writer = None
         self.current_date = None
+        self.target_height = 1080  # Standard height for all frames
         os.makedirs(output_dir, exist_ok=True)
     
     def ensure_writer(self):
@@ -119,8 +120,8 @@ class VideoRecorder:
             filename = get_video_filename(self.staff_id)
             filepath = os.path.join(self.output_dir, filename)
             
-            # Configure video writer for H.264 codec with low resource usage
-            fourcc = cv2.VideoWriter_fourcc(*'avc1')
+            # Use MJPG codec instead of H264
+            fourcc = cv2.VideoWriter_fourcc(*'MJPG')
             self.writer = cv2.VideoWriter(
                 filepath,
                 fourcc,
@@ -129,30 +130,38 @@ class VideoRecorder:
                 True  # Color
             )
             self.current_date = current_date
-            return True  # Indicates new file was created
-        return False  # No new file created
+            logger.info(f"Started new video file: {filename}")
+            return True
+        return False
 
     def capture_frame(self):
         """Capture frame from screen and return success status"""
         try:
             with mss.mss() as sct:
-                # Get all monitors except the first one
-                monitors = sct.monitors[1:]
+                monitors = sct.monitors[1:]  # Skip index 0
                 
                 if len(monitors) == 1:
                     # Single monitor setup
                     monitor = monitors[0]
                     screen = np.array(sct.grab(monitor))
+                    frame = cv2.cvtColor(screen, cv2.COLOR_BGRA2BGR)
                 else:
-                    # Multiple monitor setup - combine screens
-                    screens = [np.array(sct.grab(monitor)) for monitor in monitors]
-                    # Combine horizontally
-                    screen = np.hstack(screens)
+                    # Multiple monitor setup - resize before combining
+                    frames = []
+                    for monitor in monitors:
+                        screen = np.array(sct.grab(monitor))
+                        frame = cv2.cvtColor(screen, cv2.COLOR_BGRA2BGR)
+                        # Calculate new width while maintaining aspect ratio
+                        aspect_ratio = frame.shape[1] / frame.shape[0]
+                        new_width = int(self.target_height * aspect_ratio)
+                        # Resize frame
+                        frame = cv2.resize(frame, (new_width, self.target_height))
+                        frames.append(frame)
+                    
+                    # Combine resized frames horizontally
+                    frame = np.hstack(frames)
                 
-                # Convert from BGRA to BGR
-                frame = cv2.cvtColor(screen, cv2.COLOR_BGRA2BGR)
-                
-                # Resize to standard resolution
+                # Ensure final frame is at target resolution
                 frame = cv2.resize(frame, (1920, 1080))
                 
                 # Write frame
