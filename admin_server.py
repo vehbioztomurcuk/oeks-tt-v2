@@ -21,27 +21,48 @@ logging.basicConfig(
 )
 logger = logging.getLogger('combined_server')
 
-# Load configuration
+# Load configuration at the top of the file
+config = None  # Initialize config variable
+
 def load_config():
+    """Load configuration from admin_config.json"""
+    global config
     try:
-        with open('admin_config.json', 'r') as f:
-            config = json.load(f)
-            # Add default videos_dir if not present
-            if 'videos_dir' not in config:
-                config['videos_dir'] = 'videos'
-            return config
-    except FileNotFoundError:
-        logger.error("Configuration file not found. Creating default config.")
+        with open("admin_config.json", "r") as f:
+            loaded_config = json.load(f)
+            
+        # Set default values for any missing configuration items
         default_config = {
             "api_key": "oeks_secret_key_2024",
             "host": "0.0.0.0",
             "ws_port": 8765,
             "http_port": 8080,
+            "videos_dir": "videos",
             "screenshots_dir": "screenshots",
-            "videos_dir": "videos"
+            "retention_days": 30
         }
-        with open('admin_config.json', 'w') as f:
-            json.dump(default_config, f, indent=4)
+        
+        # Merge with defaults
+        for key, value in default_config.items():
+            if key not in loaded_config:
+                loaded_config[key] = value
+                
+        logger.info("Configuration loaded successfully")
+        config = loaded_config  # Assign to the global config variable
+        return loaded_config
+    except Exception as e:
+        logger.error(f"Error loading configuration: {e}")
+        # Use default configuration if file cannot be loaded
+        default_config = {
+            "api_key": "oeks_secret_key_2024",
+            "host": "0.0.0.0",
+            "ws_port": 8765,
+            "http_port": 8080,
+            "videos_dir": "videos",
+            "screenshots_dir": "screenshots",
+            "retention_days": 30
+        }
+        config = default_config  # Assign to the global config variable
         return default_config
 
 # Ensure screenshots directory exists
@@ -54,6 +75,7 @@ def ensure_directories(base_dir, staff_id):
 class HTTPHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         """Handle GET requests"""
+        global config
         try:
             # Parse URL
             parsed_url = urlparse(self.path)
@@ -203,6 +225,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
 
     def do_HEAD(self):
         """Handle HEAD requests for video files"""
+        global config
         try:
             parsed_url = urlparse(self.path)
             path = parsed_url.path
@@ -324,6 +347,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
 
     def get_staff_history(self, staff_id):
         """Get history data for a staff member"""
+        global config
         history_data = {
             "staffId": staff_id,
             "history": [],
@@ -376,6 +400,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
 # WebSocket server handler
 async def handle_client(websocket):
     """Handle a WebSocket client"""
+    global config
     staff_id = None
     staff_info = {}
     staff_authenticated = False
@@ -542,6 +567,9 @@ class HTTPServerThread(threading.Thread):
 
 # Main server
 async def run_server():
+    """Main server function"""
+    global config
+    # Load configuration
     config = load_config()
     host = config["host"]
     ws_port = config["ws_port"]
@@ -575,6 +603,7 @@ def signal_handler(sig, frame):
 # Update the staff list API to include video information
 def get_staff_list():
     """Get a list of all staff members and their video paths"""
+    global config
     staff_list = []
     videos_dir = config["videos_dir"]
     
@@ -660,6 +689,8 @@ def get_staff_list():
     return staff_list
 
 if __name__ == "__main__":
+    # Load configuration at startup
+    config = load_config()
     logger.info("OEKS Team Tracker - Combined Server starting...")
     
     # Register signal handlers
