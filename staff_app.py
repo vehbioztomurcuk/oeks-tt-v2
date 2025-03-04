@@ -78,6 +78,9 @@ async def send_screenshots():
     interval = config["screenshot_interval"]
     quality = config["jpeg_quality"]
     
+    # Add variable to track previous screenshot for comparison
+    previous_screenshot = None
+    
     retry_count = 0
     max_retries = 5
     base_delay = 1
@@ -114,20 +117,30 @@ async def send_screenshots():
                     if screenshot:
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:20]  # Include milliseconds
                         
-                        # Send metadata first
+                        # Determine if screen has changed
+                        activity_status = "active"
+                        if previous_screenshot:
+                            # If screenshot size is very similar, screen might not have changed much
+                            if abs(len(screenshot) - len(previous_screenshot)) < 100:
+                                activity_status = "idle"
+                        
+                        previous_screenshot = screenshot
+                        
+                        # Send metadata first with activity status
                         metadata = json.dumps({
                             "type": "metadata",
                             "staff_id": staff_id,
                             "name": name,
                             "division": division,
                             "timestamp": timestamp,
-                            "size": len(screenshot)
+                            "size": len(screenshot),
+                            "activity_status": activity_status
                         })
                         await websocket.send(metadata)
                         
                         # Then send the actual image
                         await websocket.send(screenshot)
-                        logger.info(f"Screenshot sent successfully ({len(screenshot)/1024:.1f} KB)")
+                        logger.info(f"Screenshot sent successfully ({len(screenshot)/1024:.1f} KB) - Status: {activity_status}")
                     
                     await asyncio.sleep(interval)
                     

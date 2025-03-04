@@ -85,6 +85,9 @@ class HTTPHandler(BaseHTTPRequestHandler):
                         # Get staff metadata if available
                         name = "Unknown User"
                         division = "Unassigned"
+                        activity_status = "unknown"
+                        last_activity = None
+                        
                         metadata_file = os.path.join(staff_dir, "metadata.json")
                         if os.path.exists(metadata_file):
                             try:
@@ -92,6 +95,20 @@ class HTTPHandler(BaseHTTPRequestHandler):
                                     staff_metadata = json.load(f)
                                     name = staff_metadata.get("name", name)
                                     division = staff_metadata.get("division", division)
+                                    
+                                    # Get activity status or calculate it
+                                    activity_status = staff_metadata.get("activity_status", "unknown")
+                                    last_activity_str = staff_metadata.get("last_activity")
+                                    
+                                    if last_activity_str:
+                                        try:
+                                            last_activity = datetime.fromisoformat(last_activity_str)
+                                            # Calculate inactive status if not seen for over 1 minute
+                                            time_diff = (datetime.now() - last_activity).total_seconds()
+                                            if time_diff > 60:
+                                                activity_status = "inactive"
+                                        except ValueError:
+                                            logger.error(f"Invalid timestamp format in metadata for {staff_id}")
                             except (json.JSONDecodeError, IOError) as e:
                                 logger.error(f"Error reading metadata for {staff_id}: {e}")
                         
@@ -126,7 +143,8 @@ class HTTPHandler(BaseHTTPRequestHandler):
                                 "path": f"/screenshots/{staff_id}/latest.jpg",
                                 "timestamp": mod_time,
                                 "name": name,
-                                "division": division
+                                "division": division,
+                                "activity_status": activity_status
                             }
             
             # If no staff members yet, add some demo data
@@ -137,13 +155,15 @@ class HTTPHandler(BaseHTTPRequestHandler):
                         "path": "/screenshots/demo_user_1/latest.jpg",
                         "timestamp": datetime.now().isoformat(),
                         "name": "Demo Kullanıcı 1",
-                        "division": "Pazarlama"
+                        "division": "Pazarlama",
+                        "activity_status": "unknown"
                     },
                     'demo_user_2': {
                         "path": "/screenshots/demo_user_2/latest.jpg",
                         "timestamp": datetime.now().isoformat(),
                         "name": "Demo Kullanıcı 2",
-                        "division": "Satış"
+                        "division": "Satış",
+                        "activity_status": "unknown"
                     }
                 }
             
@@ -294,7 +314,9 @@ async def handle_client(websocket):
             "staff_id": staff_id,
             "name": name,
             "division": division,
-            "last_connected": datetime.now().isoformat()
+            "last_connected": datetime.now().isoformat(),
+            "activity_status": "active",  # Default status
+            "last_activity": datetime.now().isoformat()
         }
         
         with open(metadata_file, "w") as f:
@@ -308,7 +330,19 @@ async def handle_client(websocket):
             
             if metadata.get("type") == "metadata":
                 timestamp = metadata.get("timestamp")
-                logger.debug(f"Preparing to receive image from {name} ({staff_id}) in {division}, timestamp: {timestamp}")
+                activity_status = metadata.get("activity_status", "active")
+                
+                # Update the staff metadata with new activity status
+                with open(metadata_file, "r") as f:
+                    staff_metadata = json.load(f)
+                
+                staff_metadata["last_activity"] = datetime.now().isoformat()
+                staff_metadata["activity_status"] = activity_status
+                
+                with open(metadata_file, "w") as f:
+                    json.dump(staff_metadata, f, indent=4)
+                
+                logger.debug(f"Preparing to receive image from {name} ({staff_id}) in {division}, timestamp: {timestamp}, status: {activity_status}")
                 
                 # Receive the actual image
                 image_data = await websocket.recv()

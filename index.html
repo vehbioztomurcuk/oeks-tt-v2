@@ -444,6 +444,25 @@
                 grid-template-columns: 1fr;
             }
         }
+        
+        /* Add CSS for status indicators */
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        .staff-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .staff-info .status {
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -1211,6 +1230,81 @@
         
         // Initial WebSocket connection
         connectWebSocket();
+
+        // Add this function to display status indicators with appropriate colors
+        function getStatusIndicator(status) {
+            let color = '#888'; // Default gray for unknown
+            let label = 'Unknown';
+            
+            switch(status) {
+                case 'active':
+                    color = '#2ecc71'; // Green for active
+                    label = 'Active';
+                    break;
+                case 'idle':
+                    color = '#f39c12'; // Yellow/orange for idle
+                    label = 'Idle';
+                    break;
+                case 'inactive':
+                    color = '#e74c3c'; // Red for inactive
+                    label = 'Inactive';
+                    break;
+            }
+            
+            return `<span class="status-indicator" style="background-color: ${color};" title="${label}"></span> ${label}`;
+        }
+
+        // In your staff list update function, update to include status indicators
+        function updateStaffList() {
+            fetch('/api/staff-list')
+                .then(response => response.json())
+                .then(data => {
+                    const staffContainer = document.getElementById('staff-container');
+                    staffContainer.innerHTML = '';
+                    
+                    const staffList = data.staffList || [];
+                    const latestScreenshots = data.latestScreenshots || {};
+                    
+                    // Filter staff if search term exists
+                    // ... existing code ...
+                    
+                    // Create a card for each staff member
+                    for (const staffId of filteredStaff) {
+                        const screenshot = latestScreenshots[staffId];
+                        if (!screenshot) continue;
+                        
+                        // Create status indicator and labels
+                        const statusHtml = getStatusIndicator(screenshot.activity_status);
+                        
+                        const card = document.createElement('div');
+                        card.className = 'staff-card';
+                        card.setAttribute('data-staff-id', staffId);
+                        card.setAttribute('data-name', screenshot.name);
+                        card.setAttribute('data-division', screenshot.division);
+                        
+                        card.innerHTML = `
+                            <div class="staff-header">
+                                <h3>${screenshot.name || 'Unknown User'}</h3>
+                                <div class="staff-info">
+                                    <p class="division">${screenshot.division || 'Unassigned'}</p>
+                                    <p class="status">${statusHtml}</p>
+                                </div>
+                            </div>
+                            <div class="screenshot-container">
+                                <img src="${screenshot.path}?t=${new Date().getTime()}" alt="Screenshot from ${screenshot.name}">
+                            </div>
+                            <div class="timestamp">Last update: ${formatTimestamp(screenshot.timestamp)}</div>
+                        `;
+                        
+                        // ... existing code for click events ...
+                        
+                        staffContainer.appendChild(card);
+                    }
+                    
+                    // ... existing code ...
+                })
+                .catch(error => console.error('Error fetching staff list:', error));
+        }
     </script>
 </body>
 </html>
