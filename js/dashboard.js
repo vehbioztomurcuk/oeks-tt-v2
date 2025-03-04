@@ -215,9 +215,9 @@ function fetchStaffData() {
             // Update the dashboard with new data
             updateDashboard(data);
             
-            // Update live view if open
-            if (liveViewStaffId) {
-                updateLiveView();
+            // Update live view if open and the function exists
+            if (typeof liveViewStaffId !== 'undefined' && liveViewStaffId && typeof updateLiveView === 'function') {
+                updateLiveView(liveViewStaffId);
             }
             
             updateConnectionStatus('connected');

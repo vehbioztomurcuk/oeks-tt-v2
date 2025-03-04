@@ -108,10 +108,37 @@ function loadVideoForStaff(staffId, container) {
         videoElement.loop = true;
         videoElement.playsInline = true;
         
-        // Add error handling
+        // Keep track of attempt count
+        let attemptCount = 0;
+        const maxAttempts = 3;
+        
+        // Add error handling with retry
         videoElement.addEventListener('error', (e) => {
             console.error("Video loading error:", e);
-            showVideoError("Video yüklenirken hata oluştu");
+            
+            if (attemptCount < maxAttempts) {
+                attemptCount++;
+                console.log(`Retry attempt ${attemptCount} of ${maxAttempts}...`);
+                
+                // Wait a short time before retry
+                setTimeout(() => {
+                    // Try direct latest.mp4 as a fallback for any staff
+                    const timestamp = Date.now();
+                    const retryUrl = `videos/${staffId}/latest.mp4?t=${timestamp}`;
+                    console.log(`Retrying with direct latest.mp4: ${retryUrl}`);
+                    
+                    const source = videoElement.querySelector('source');
+                    if (source) {
+                        source.src = retryUrl;
+                        videoElement.load();
+                        videoElement.play().catch(err => {
+                            console.warn('Retry autoplay error:', err);
+                        });
+                    }
+                }, 1000 * attemptCount); // Wait longer with each retry
+            } else {
+                showVideoError("Video yüklenirken hata oluştu - Kayıt durumunda olabilir");
+            }
         });
         
         // Add success handling
@@ -132,6 +159,7 @@ function loadVideoForStaff(staffId, container) {
             // For staff_pc_141, always try to use latest.mp4 directly
             if (staffId === 'staff_pc_141') {
                 videoUrl = `videos/${staffId}/latest.mp4?t=${timestamp}`;
+                console.log(`Staff PC 141 special handling - using direct latest.mp4 path: ${videoUrl}`);
             } else {
                 // For other staff, use the video path from staffInfo
                 let cleanPath = staff.video_path;
@@ -163,7 +191,61 @@ function loadVideoForStaff(staffId, container) {
     } else {
         // No valid video path
         console.warn("No valid video path for staff:", staffId, staff.video_path);
-        showVideoError("Bu kullanıcı için video kaydı bulunmamaktadır");
+        
+        // For staff_pc_141, give a more specific message
+        if (staffId === 'staff_pc_141') {
+            showVideoError("Bu kullanıcı için video kaydı işleniyor, lütfen bekleyin...");
+            
+            // Try to load latest.mp4 directly as a fallback
+            const timestamp = Date.now();
+            const fallbackUrl = `videos/${staffId}/latest.mp4?t=${timestamp}`;
+            
+            // Create video element for fallback attempt
+            const videoElement = document.createElement('video');
+            videoElement.id = 'modal-video-player';
+            videoElement.className = 'modal-video';
+            videoElement.autoplay = true;
+            videoElement.controls = true;
+            videoElement.muted = true;
+            videoElement.loop = true;
+            videoElement.playsInline = true;
+            
+            // Add error handling
+            videoElement.addEventListener('error', () => {
+                console.warn("Fallback video loading also failed");
+                showVideoError("Bu kullanıcı için video kaydı bulunmamaktadır");
+            });
+            
+            // Add success handling
+            videoElement.addEventListener('loadeddata', () => {
+                console.log("Fallback video loaded successfully");
+                // Remove error message
+                container.querySelector('.video-error').remove();
+                // Remove loading indicator if it exists
+                const loadingIndicator = container.querySelector('.loading-indicator');
+                if (loadingIndicator) {
+                    loadingIndicator.remove();
+                }
+            });
+            
+            try {
+                // Set the source
+                const source = document.createElement('source');
+                source.src = fallbackUrl;
+                source.type = 'video/mp4';
+                
+                videoElement.appendChild(source);
+                container.appendChild(videoElement);
+                
+                // Try to load and play
+                videoElement.load();
+                videoElement.play().catch(() => {});
+            } catch (error) {
+                console.error("Error setting fallback video source:", error);
+            }
+        } else {
+            showVideoError("Bu kullanıcı için video kaydı bulunmamaktadır");
+        }
     }
 }
 
@@ -255,7 +337,9 @@ function setupLiveViewRefresh() {
     
     // Set up interval to refresh the video based on the selected refresh rate
     liveViewRefreshInterval = setInterval(() => {
-        updateLiveView(liveViewStaffId);
+        if (liveViewStaffId) {
+            updateLiveView(liveViewStaffId);
+        }
     }, liveViewRefreshRate * 1000);
     
     console.log(`Set up live view refresh for ${liveViewStaffId} every ${liveViewRefreshRate} seconds`);
@@ -273,45 +357,41 @@ function updateLiveView(staffId) {
     
     console.log(`Updating live view for ${staffId}`);
     
-    // Refresh the staff data from the server first
-    fetchStaffList().then(() => {
-        const videoContainer = document.querySelector('.modal-video-container');
-        if (!videoContainer) return;
+    // Get the video container
+    const videoContainer = document.querySelector('.modal-video-container');
+    if (!videoContainer) return;
+    
+    // Check if there's a video element already
+    const existingVideo = document.getElementById('modal-video-player');
+    if (existingVideo) {
+        // Create a new timestamp for cache busting
+        const timestamp = Date.now();
+        let videoUrl;
         
-        // Check if there's a video element already
-        const existingVideo = document.getElementById('modal-video-player');
-        if (existingVideo) {
-            // Create a new timestamp for cache busting
-            const timestamp = Date.now();
-            let videoUrl;
-            
-            // For staff_pc_141, always try to use latest.mp4 directly
-            if (staffId === 'staff_pc_141') {
-                videoUrl = `videos/${staffId}/latest.mp4?t=${timestamp}`;
-            } else {
-                // For other staff, use the video path from staffInfo
-                let cleanPath = staff.video_path;
-                if (cleanPath.includes('?')) {
-                    cleanPath = cleanPath.split('?')[0];
-                }
-                videoUrl = `${cleanPath}?t=${timestamp}`;
-            }
-            
-            // Update the source
-            const source = existingVideo.querySelector('source');
-            if (source) {
-                source.src = videoUrl;
-                existingVideo.load();
-                existingVideo.play().catch(err => {
-                    console.warn('Autoplay error on refresh:', err);
-                });
-                console.log(`Updated video source to: ${videoUrl}`);
-            }
+        // For staff_pc_141, always try to use latest.mp4 directly
+        if (staffId === 'staff_pc_141') {
+            videoUrl = `videos/${staffId}/latest.mp4?t=${timestamp}`;
         } else {
-            // No existing video, need to reload it
-            loadVideoForStaff(staffId, videoContainer);
+            // For other staff, use the video path from staffInfo
+            let cleanPath = staff.video_path;
+            if (cleanPath.includes('?')) {
+                cleanPath = cleanPath.split('?')[0];
+            }
+            videoUrl = `${cleanPath}?t=${timestamp}`;
         }
-    }).catch(error => {
-        console.error("Error refreshing staff data:", error);
-    });
+        
+        // Update the source
+        const source = existingVideo.querySelector('source');
+        if (source) {
+            source.src = videoUrl;
+            existingVideo.load();
+            existingVideo.play().catch(err => {
+                console.warn('Autoplay error on refresh:', err);
+            });
+            console.log(`Updated video source to: ${videoUrl}`);
+        }
+    } else {
+        // No existing video, need to reload it
+        loadVideoForStaff(staffId, videoContainer);
+    }
 } 
