@@ -969,6 +969,11 @@
             // Set the current staff ID for live view
             liveViewStaffId = staffId;
             
+            // Define liveViewRefreshInterval if it doesn't exist
+            if (typeof liveViewRefreshInterval === 'undefined') {
+                window.liveViewRefreshInterval = null;
+            }
+            
             // Clear any existing refresh interval
             if (liveViewRefreshInterval) {
                 clearInterval(liveViewRefreshInterval);
@@ -976,9 +981,16 @@
             }
             
             // Update modal content
+            document.getElementById('modal-staff-name').textContent = staff.name || "Unknown User";
             document.getElementById('detail-name').textContent = staff.name || "Unknown User";
             document.getElementById('detail-division').textContent = staff.division || "Unassigned";
             document.getElementById('detail-staff-id').textContent = staffId;
+            
+            // Update status if element exists
+            const detailStatus = document.getElementById('detail-status');
+            if (detailStatus) {
+                detailStatus.textContent = staff.recording_status === 'active' ? 'Aktif' : 'İnaktif';
+            }
             
             // Update status indicator
             const statusIndicator = document.querySelector('.modal-header .status-indicator');
@@ -987,65 +999,96 @@
                     (staff.recording_status === 'active' ? 'status-active' : 'status-inactive');
             }
             
-            // Get the video element
-            const videoElement = document.querySelector('.modal-video');
-            if (!videoElement) return;
+            // Show modal immediately
+            document.getElementById('live-view-modal').style.display = 'block';
             
-            // Clear previous video content
-            videoElement.innerHTML = '';
+            // Set up a slower refresh for the modal info
+            liveViewRefreshInterval = setInterval(() => {
+                updateDetailInfo(staffId);
+            }, 10000);
             
-            // Only add video source if there's a valid path
-            if (staff.video_path) {
-                const timestamp = Date.now();
-                const source = document.createElement('source');
-                source.src = `${staff.video_path}?t=${timestamp}`;
-                source.type = 'video/mp4';
-                videoElement.appendChild(source);
+            // Get the video container
+            const videoContainer = document.querySelector('.modal-video-container');
+            if (!videoContainer) return;
+            
+            // Show loading state immediately
+            videoContainer.innerHTML = `
+                <div class="loading-indicator" style="position:absolute; top:0; left:0; right:0; bottom:0; display:flex; justify-content:center; align-items:center; background-color:#111;">
+                    <i class="fas fa-spinner refresh-animation" style="font-size:2rem; color:#3498db;"></i>
+                </div>
+            `;
+            
+            // Only try to load video if there's a valid path
+            if (staff.video_path && staff.video_path !== "null" && !staff.video_path.includes("/null")) {
+                // Instead of using HEAD request which isn't supported, directly try to load the video
+                const videoElement = document.createElement('video');
+                videoElement.className = 'modal-video';
+                videoElement.autoplay = true;
+                videoElement.controls = true;
+                videoElement.muted = true;
+                videoElement.loop = true;
+                videoElement.playsInline = true;
                 
                 // Add error handling
-                videoElement.onerror = function() {
-                    console.error('Video loading error:', videoElement.error);
-                    videoElement.innerHTML = `
-                        <div class="no-video-message" style="display:flex;height:100%;align-items:center;justify-content:center;background:#f0f0f0;color:#666;">
-                            <div style="text-align:center;">
-                                <i class="fas fa-exclamation-triangle" style="font-size:48px;margin-bottom:10px;"></i>
-                                <p>Video yüklenemedi</p>
-                            </div>
-                        </div>
-                    `;
-                };
+                videoElement.addEventListener('error', (e) => {
+                    console.error("Video loading error:", e);
+                    showVideoError("Video yüklenirken hata oluştu");
+                });
                 
-                // Load the video
+                // Add success handling
+                videoElement.addEventListener('loadeddata', () => {
+                    console.log("Video loaded successfully");
+                    // Remove loading indicator if it exists
+                    const loadingIndicator = videoContainer.querySelector('.loading-indicator');
+                    if (loadingIndicator) {
+                        loadingIndicator.remove();
+                    }
+                });
+                
+                // Create a proper URL with a single timestamp parameter
+                const timestamp = Date.now();
+                const videoUrl = staff.video_path.includes('?') 
+                    ? staff.video_path.split('?')[0] + `?t=${timestamp}` 
+                    : `${staff.video_path}?t=${timestamp}`;
+                    
+                // Set the source
+                const source = document.createElement('source');
+                source.src = videoUrl;
+                source.type = 'video/mp4';
+                
+                videoElement.appendChild(source);
+                videoContainer.appendChild(videoElement);
+                
+                // Try to load and play
                 videoElement.load();
-                
-                // Try to play, but don't worry if it fails
                 videoElement.play().catch(err => {
-                    console.error('Video playback error:', err);
-                    // Don't try to auto-play again, just let user click play button
+                    console.warn('Autoplay error (may require user interaction):', err);
                 });
             } else {
-                // Show placeholder for no video
-                videoElement.innerHTML = `
-                    <div class="no-video-message" style="display:flex;height:100%;align-items:center;justify-content:center;background:#f0f0f0;color:#666;">
+                // No valid video path
+                showVideoError("Bu kullanıcı için video kaydı bulunmamaktadır");
+            }
+            
+            // Hide the screenshot history section if it exists
+            const historySection = document.querySelector('.history-section');
+            if (historySection) {
+                historySection.style.display = 'none';
+            }
+        }
+        
+        // Add the missing function for video error display
+        function showVideoError(message) {
+            const videoContainer = document.querySelector('.modal-video-container');
+            if (videoContainer) {
+                videoContainer.innerHTML = `
+                    <div class="no-video-message" style="display:flex;height:100%;align-items:center;justify-content:center;background:#111;color:#eee;">
                         <div style="text-align:center;">
-                            <i class="fas fa-video-slash" style="font-size:48px;margin-bottom:10px;"></i>
-                            <p>Video bulunamadı</p>
+                            <i class="fas fa-exclamation-triangle" style="font-size:48px;margin-bottom:10px;color:#e74c3c;"></i>
+                            <p>${message}</p>
                         </div>
                     </div>
                 `;
             }
-            
-            // Show modal
-            document.getElementById('live-view-modal').style.display = 'block';
-            
-            // Set up a MUCH slower refresh for the modal info - only metadata, not video
-            // This avoids constantly reloading the video
-            liveViewRefreshInterval = setInterval(() => {
-                updateDetailInfo(staffId);
-            }, 10000); // Only refresh metadata every 10 seconds
-            
-            // Fetch history for this staff member
-            fetchStaffHistory(staffId);
         }
         
         // Add a new function to update only the detail info, not the video
@@ -1344,7 +1387,44 @@
                     staffCard.addEventListener('click', () => openModal(staffId));
                 }
                 
-                // Update card content with video
+                // Determine if we have a valid video path
+                const hasValidVideo = staffInfo.video_path && 
+                                    staffInfo.video_path !== "null" && 
+                                    !staffInfo.video_path.includes("/null");
+                
+                // Create HTML for the video container
+                let videoHTML;
+                if (hasValidVideo) {
+                    // Ensure we don't have duplicate timestamp parameters
+                    const videoUrl = staffInfo.video_path.includes('?') 
+                        ? staffInfo.video_path.split('?')[0] + `?t=${Date.now()}` 
+                        : `${staffInfo.video_path}?t=${Date.now()}`;
+                        
+                    videoHTML = `
+                        <div class="video-container">
+                            <video class="staff-video" autoplay muted loop playsinline>
+                                <source src="${videoUrl}" type="video/mp4">
+                            </video>
+                            <div class="video-status">${staffInfo.recording_status === 'active' ? 'Kayıt' : 'Beklemede'}</div>
+                            <div class="video-timestamp">${timestamp.toLocaleTimeString('tr-TR')}</div>
+                        </div>
+                    `;
+                } else {
+                    videoHTML = `
+                        <div class="video-container">
+                            <div style="display:flex;height:100%;align-items:center;justify-content:center;background:#111;color:#666;">
+                                <div style="text-align:center;">
+                                    <i class="fas fa-video-slash" style="font-size:24px;margin-bottom:5px;"></i>
+                                    <p style="font-size:12px;">Video bulunamadı</p>
+                                </div>
+                            </div>
+                            <div class="video-status">${staffInfo.recording_status === 'active' ? 'Kayıt' : 'Beklemede'}</div>
+                            <div class="video-timestamp">${timestamp.toLocaleTimeString('tr-TR')}</div>
+                        </div>
+                    `;
+                }
+                
+                // Update card content
                 staffCard.innerHTML = `
                     <div class="staff-header">
                         <span>
@@ -1353,33 +1433,33 @@
                         </span>
                         <span>${formatTimeDiff(now, timestamp)} önce</span>
                     </div>
-                    <div class="video-container">
-                        <video class="staff-video" autoplay muted loop playsinline>
-                            <source src="${staffInfo.video_path}" type="video/mp4">
-                        </video>
-                        <div class="video-status">${staffInfo.recording_status === 'active' ? 'Kayıt' : 'Beklemede'}</div>
-                        <div class="video-timestamp">${timestamp.toLocaleTimeString('tr-TR')}</div>
-                    </div>
+                    ${videoHTML}
                     <div class="timestamp">
                         <span>${staffId}</span> - ${timestamp.toLocaleString('tr-TR')}
                     </div>
                 `;
                 
-                // Reload video source periodically
-                const video = staffCard.querySelector('.staff-video');
-                if (staffInfo.video_path) {
-                    const videoSource = document.createElement('source');
-                    videoSource.src = `${staffInfo.video_path}?t=${Date.now()}`;
-                    videoSource.type = "video/mp4";
-                    video.innerHTML = ''; // Clear any existing sources
-                    video.appendChild(videoSource);
-                    video.load(); // Force reload
-                } else {
-                    video.innerHTML = '<div class="error-state"><i class="fas fa-exclamation-triangle"></i><p>Video yüklenemedi</p></div>';
+                // Set up error handling for videos that actually exist
+                if (hasValidVideo) {
+                    const video = staffCard.querySelector('.staff-video');
+                    if (video) {
+                        video.onerror = function() {
+                            const container = this.closest('.video-container');
+                            if (container) {
+                                container.innerHTML = `
+                                    <div style="display:flex;height:100%;align-items:center;justify-content:center;background:#111;color:#666;">
+                                        <div style="text-align:center;">
+                                            <i class="fas fa-video-slash" style="font-size:24px;margin-bottom:5px;"></i>
+                                            <p style="font-size:12px;">Video yüklenemedi</p>
+                                        </div>
+                                    </div>
+                                    <div class="video-status">${staffInfo.recording_status === 'active' ? 'Kayıt' : 'Beklemede'}</div>
+                                    <div class="video-timestamp">${timestamp.toLocaleTimeString('tr-TR')}</div>
+                                `;
+                            }
+                        };
+                    }
                 }
-
-                // Add error handling for video elements
-                setupVideoErrorHandling(video);
             });
             
             // Apply filters
@@ -1390,72 +1470,101 @@
         let socket;
         
         function connectWebSocket() {
-            // Use the current window's hostname and the port from admin_config.json
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsHost = window.location.hostname; // This will get the actual server IP/hostname
-            const wsPort = 8765;  // Hard-coded to match admin_config.json
-            const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}`;
-            
-            console.log(`Connecting to WebSocket: ${wsUrl}`);
-            
             try {
-                // Close existing socket if open
-                if (socket && socket.readyState !== WebSocket.CLOSED) {
-                    socket.close();
-                }
+                // Get the proper WebSocket protocol based on whether we're using HTTPS or HTTP
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 
-                socket = new WebSocket(wsUrl);
+                // Use the same hostname as the page, defaulting to localhost if needed
+                const wsHost = window.location.hostname || 'localhost';
                 
-                socket.onopen = () => {
-                    console.log("WebSocket bağlantısı kuruldu");
-                    // Send authentication immediately after connection
-                    socket.send(JSON.stringify({
-                        type: "auth",
-                        api_key: "oeks_secret_key_2024",
-                        staff_id: "admin_panel", // Use a unique ID for the admin panel
-                        name: "Admin Panel",
-                        division: "IT"
-                    }));
-                    updateConnectionStatus('connected');
-                };
+                // WebSocket port is 8765 (from admin_config.json)
+                const wsPort = 8765;
                 
-                socket.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        console.log("WebSocket mesajı alındı:", data);
-                        
-                        // Process different message types
-                        if (data.type === "update") {
-                            fetchStaffList();
-                        }
-                    } catch (e) {
-                        console.error("WebSocket mesaj işleme hatası:", e);
-                    }
-                };
+                // Construct WebSocket URL
+                const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}`;
                 
-                socket.onclose = (event) => {
-                    console.log(`WebSocket bağlantısı kapandı: ${event.code} ${event.reason}`);
-                    updateConnectionStatus('disconnected');
+                console.log(`Connecting to WebSocket: ${wsUrl}`);
+                
+                // Create WebSocket connection
+                const socket = new WebSocket(wsUrl);
+                
+                // Connection opened
+                socket.addEventListener('open', (event) => {
+                    console.log('WebSocket bağlantısı kuruldu');
                     
-                    // Only reconnect if it was an abnormal closure
-                    if (event.code !== 1000) {
-                        setTimeout(connectWebSocket, 3000);
+                    // Send authentication message
+                    const authMessage = {
+                        type: 'auth',
+                        api_key: 'oeks_secret_key_2024',
+                        client_type: 'admin'
+                    };
+                    
+                    socket.send(JSON.stringify(authMessage));
+                    
+                    // Update connection status
+                    const statusElement = document.getElementById('connection-status');
+                    if (statusElement) {
+                        statusElement.textContent = 'Bağlı';
+                        statusElement.className = 'status-online';
                     }
-                };
+                });
                 
-                socket.onerror = (error) => {
-                    console.error("WebSocket hatası:", error);
-                    updateConnectionStatus('error');
-                };
-            } catch (error) {
-                console.error("WebSocket connection error:", error);
-                updateConnectionStatus('error');
-                setTimeout(connectWebSocket, 3000);
+                // Listen for messages
+                socket.addEventListener('message', (event) => {
+                    try {
+                        console.log('WebSocket mesajı alındı:', event.data);
+                        const data = JSON.parse(event.data);
+                        
+                        // Handle different message types
+                        if (data.status === 'authenticated') {
+                            console.log('WebSocket authentication successful');
+                        }
+                        
+                        // More message handlers can be added here
+                    } catch (e) {
+                        console.error('WebSocket message parsing error:', e);
+                    }
+                });
+                
+                // Connection closed
+                socket.addEventListener('close', (event) => {
+                    console.log(`WebSocket bağlantısı kapandı: ${event.code} ${event.reason || ''}`);
+                    
+                    // Update connection status
+                    const statusElement = document.getElementById('connection-status');
+                    if (statusElement) {
+                        statusElement.textContent = 'Bağlantı Kesildi';
+                        statusElement.className = 'status-offline';
+                    }
+                    
+                    // Reconnect only on abnormal closures or server errors
+                    if (event.code !== 1000 && event.code !== 1001) {
+                        console.log('Abnormal closure, attempting to reconnect in 5 seconds...');
+                        setTimeout(connectWebSocket, 5000);
+                    }
+                });
+                
+                // Connection error
+                socket.addEventListener('error', (error) => {
+                    console.error('WebSocket error:', error);
+                });
+                
+                return socket;
+            } catch (e) {
+                console.error('Error creating WebSocket connection:', e);
+                // Try to reconnect after a delay
+                setTimeout(connectWebSocket, 5000);
+                return null;
             }
         }
         
-        // Initial WebSocket connection
-        connectWebSocket();
+        // Make sure this function is called when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            // Existing initialization code...
+            
+            // Initialize WebSocket connection
+            const socket = connectWebSocket();
+        });
 
         // Add this function to display status indicators with appropriate colors
         function getStatusIndicator(status) {

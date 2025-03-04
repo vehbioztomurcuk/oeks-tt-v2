@@ -11,6 +11,7 @@ import threading
 import mimetypes
 from io import BytesIO
 from urllib.parse import urlparse
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -282,7 +283,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
                     else:
                         logger.warning(f"Staff video directory does not exist: {staff_dir}")
                         
-                    # Try directly in videos directory since that's how staff_app.py saves them
+                    # Always try directly in videos directory since that's how staff_app.py saves them
                     matching_files = [f for f in os.listdir(videos_dir) 
                                     if f.endswith('.mp4') and f.startswith(f"{staff_id}-") 
                                     and os.path.isfile(os.path.join(videos_dir, f))]
@@ -523,11 +524,14 @@ def get_staff_list():
                 if len(parts) >= 2:
                     # Handle staff IDs that might contain dashes themselves
                     staff_id_parts = parts[:-3]  # All parts except the last 3 (MM-DD-YYYY.mp4)
+                    if not staff_id_parts:
+                        continue
+                        
                     staff_id = '-'.join(staff_id_parts)
                     
                     # Only process if it looks like a valid staff ID format
                     if staff_id:
-                        video_path = f"/videos/{video_file}"
+                        video_path = f"/videos/{video_file}?t={int(time.time())}"
                         
                         # Get metadata from screenshots directory
                         metadata_file = os.path.join(screenshots_dir, staff_id, "metadata.json")
@@ -556,6 +560,9 @@ def get_staff_list():
                             "timestamp": metadata.get("last_activity", datetime.now().isoformat()),
                             "video_path": video_path
                         }
+                        
+                        # Log the video path for debugging
+                        logger.info(f"Staff {staff_id} video path set to: {video_path}")
             
             # Then check for traditional staff subfolders
             for staff_id in [d for d in os.listdir(videos_dir) if os.path.isdir(os.path.join(videos_dir, d))]:
@@ -570,7 +577,7 @@ def get_staff_list():
                     # Sort by modification time (newest first)
                     video_files.sort(key=lambda x: os.path.getmtime(os.path.join(staff_dir, x)), reverse=True)
                     latest_video = video_files[0]
-                    video_path = f"/videos/{staff_id}/{latest_video}"
+                    video_path = f"/videos/{staff_id}/{latest_video}?t={int(time.time())}"
                     
                 # Skip if already processed
                 if staff_id in response["staffList"]:
@@ -627,13 +634,28 @@ def get_staff_list():
                     except:
                         logger.error(f"Error reading metadata for {staff_id}")
                 
+                # Check for videos in the main videos directory for this staff ID
+                matching_files = []
+                if os.path.exists(videos_dir):
+                    matching_files = [f for f in os.listdir(videos_dir) 
+                                    if f.endswith('.mp4') and f.startswith(f"{staff_id}-") 
+                                    and os.path.isfile(os.path.join(videos_dir, f))]
+                
+                video_path = None
+                if matching_files:
+                    # Sort by modification time (newest first)
+                    matching_files.sort(key=lambda x: os.path.getmtime(os.path.join(videos_dir, x)), reverse=True)
+                    latest_video = matching_files[0]
+                    video_path = f"/videos/{latest_video}?t={int(time.time())}"
+                    logger.info(f"Found video for staff {staff_id} in main directory: {latest_video}")
+                
                 response["staffList"].append(staff_id)
                 response["staffData"][staff_id] = {
                     "name": metadata.get("name", "Unknown User"),
                     "division": metadata.get("division", "Unassigned"),
                     "recording_status": metadata.get("activity_status", "inactive"),
                     "timestamp": metadata.get("last_activity", datetime.now().isoformat()),
-                    "video_path": None  # No video available
+                    "video_path": video_path  # Now this could be a real path or None
                 }
     
     except Exception as e:
