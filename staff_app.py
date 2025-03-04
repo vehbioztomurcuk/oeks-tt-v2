@@ -44,25 +44,48 @@ def load_config():
 def capture_screenshot(quality=30):
     try:
         with mss.mss() as sct:
-            monitor = sct.monitors[1]  # Primary monitor
-            sct_img = sct.grab(monitor)
-            img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+            # Get all monitors except the first one (which is usually a combined view)
+            monitors = sct.monitors[1:]  # Skip index 0 which is the "all in one" monitor
+            
+            if len(monitors) == 1:
+                # If only one monitor, use existing behavior
+                monitor = monitors[0]
+                sct_img = sct.grab(monitor)
+                img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+            else:
+                # Capture each monitor
+                images = []
+                for monitor in monitors:
+                    sct_img = sct.grab(monitor)
+                    img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+                    images.append(img)
+                
+                # Calculate dimensions for the combined image
+                total_width = sum(img.width for img in images)
+                max_height = max(img.height for img in images)
+                
+                # Create a new image to hold all screenshots
+                combined = Image.new('RGB', (total_width, max_height))
+                
+                # Paste all images side by side
+                x_offset = 0
+                for img in images:
+                    combined.paste(img, (x_offset, 0))
+                    x_offset += img.width
+                
+                img = combined
             
             # Resize to reduce size but keep reasonable quality
             width, height = img.size
-            new_width = min(1280, width)  # Max width 1280px for bandwidth saving
+            new_width = min(1920, width)  # Increased max width to accommodate multiple screens
             new_height = int(height * (new_width / width))
             img = img.resize((new_width, new_height), Image.LANCZOS)
-            
-            # Enhance image quality slightly
-            # from PIL import ImageEnhance
-            # enhancer = ImageEnhance.Contrast(img)
-            # img = enhancer.enhance(1.2)  # Slightly enhance contrast
             
             # Convert to bytes with appropriate quality
             buffer = BytesIO()
             img.save(buffer, format="JPEG", quality=quality, optimize=True)
             return buffer.getvalue()
+            
     except Exception as e:
         logger.error(f"Screenshot capture failed: {e}")
         return None

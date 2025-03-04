@@ -1,8 +1,8 @@
 {
-    "admin_ws_url": "ws://192.168.1.159:8765",
+    "admin_ws_url": "ws://192.168.1.183:8765",
     "api_key": "oeks_secret_key_2024",
     "staff_id": "staff_pc_141",
-    "name": "Vehbi",
+    "name": "Vehbi OZTOMURCUK",
     "division": "Marketing",
     "screenshot_interval": 3,
     "jpeg_quality": 30
