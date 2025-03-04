@@ -184,3 +184,35 @@ oeks-tt-2
 └─ videos
 
 ```
+```
+oeks-tt-2
+├─ admin_config.json
+├─ admin_server.py
+├─ archieve
+│  ├─ api_server.py
+│  ├─ combined_server.py
+│  ├─ package.bat
+│  └─ trash
+│     ├─ latest-message.md
+│     ├─ Prompt-2.md
+│     └─ prompt.md
+├─ cleanup_script.py
+├─ config.json
+├─ css
+│  └─ styles.css
+├─ index.html
+├─ js
+│  ├─ dashboard.js
+│  ├─ history.js
+│  ├─ modal.js
+│  ├─ script.js
+│  └─ utils.js
+├─ README-TR.md
+├─ README.md
+├─ requirements.txt
+├─ save.md
+├─ staff_app.py
+└─ videos
+   └─ staff_pc_141
+
+```
