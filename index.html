@@ -1341,11 +1341,11 @@
             }
             
             try {
-                // Create new WebSocket connection
+                // Create new WebSocket connection using the correct port
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const host = window.location.hostname || 'localhost';
-                const port = window.location.port || '8080';
-                const wsUrl = `${protocol}//${host}:${port}/ws`;
+                const wsPort = '8765'; // Changed from 8080 to match admin_server.py WebSocket port
+                const wsUrl = `${protocol}//${host}:${wsPort}`;
                 
                 console.log("Attempting WebSocket connection to:", wsUrl);
                 socket = new WebSocket(wsUrl);
