@@ -452,19 +452,70 @@ function updateStaffList() {
 }
 
 /**
- * Setup auto-refresh
+ * Setup automatic refresh interval
  */
-let refreshIntervalId = null;
-let refreshRate = 3; // seconds
-
 function setupRefresh() {
-    if (refreshIntervalId) {
-        clearInterval(refreshIntervalId);
-        refreshIntervalId = null;
+    let refreshIntervalId = null;
+    let refreshDebounceTimer = null;
+    
+    // Debounced refresh function
+    const debouncedRefresh = () => {
+        if (refreshDebounceTimer) {
+            clearTimeout(refreshDebounceTimer);
+        }
+        
+        refreshDebounceTimer = setTimeout(() => {
+            console.log("Running debounced data refresh");
+            fetchStaffData();
+        }, 300);
+    };
+    
+    // Setup initial refresh interval
+    const refreshSelect = document.getElementById('refresh-interval');
+    if (refreshSelect) {
+        const interval = parseInt(refreshSelect.value);
+        
+        if (interval > 0) {
+            refreshIntervalId = setInterval(debouncedRefresh, interval * 1000);
+            console.log(`Set up auto-refresh every ${interval} seconds`);
+        }
+        
+        // Handle refresh interval change
+        refreshSelect.addEventListener('change', () => {
+            // Clear existing interval
+            if (refreshIntervalId) {
+                clearInterval(refreshIntervalId);
+                refreshIntervalId = null;
+            }
+            
+            // Set up new interval if not 0
+            const newInterval = parseInt(refreshSelect.value);
+            if (newInterval > 0) {
+                refreshIntervalId = setInterval(debouncedRefresh, newInterval * 1000);
+                console.log(`Changed auto-refresh to every ${newInterval} seconds`);
+            } else {
+                console.log('Auto-refresh disabled');
+            }
+        });
     }
     
-    if (refreshRate > 0) {
-        refreshIntervalId = setInterval(fetchStaffData, refreshRate * 1000);
+    // Setup manual refresh button
+    const refreshBtn = document.getElementById('refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            console.log('Manual refresh requested');
+            
+            // Add spinning animation to button
+            refreshBtn.classList.add('refreshing');
+            
+            // Run debounced refresh
+            debouncedRefresh();
+            
+            // Remove animation after a delay
+            setTimeout(() => {
+                refreshBtn.classList.remove('refreshing');
+            }, 1000);
+        });
     }
 }
 

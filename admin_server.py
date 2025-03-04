@@ -344,11 +344,33 @@ class HTTPHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', content_type)
             self.send_header('Access-Control-Allow-Origin', '*')
+            
+            # For video files, add additional headers to prevent caching
+            if content_type.startswith('video/'):
+                self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                self.send_header('Pragma', 'no-cache')
+                self.send_header('Expires', '0')
+                
+                # Add content length header for videos
+                self.send_header('Content-Length', str(os.path.getsize(file_path)))
+                logger.info(f"Serving video file: {file_path} ({os.path.getsize(file_path)} bytes)")
+            
             self.end_headers()
             
             try:
                 with open(file_path, 'rb') as f:
-                    self.wfile.write(f.read())
+                    # For videos, read in smaller chunks to avoid memory issues
+                    if content_type.startswith('video/'):
+                        chunk_size = 1024 * 8  # 8KB chunks
+                        while True:
+                            chunk = f.read(chunk_size)
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                    else:
+                        # For other files, read all at once
+                        self.wfile.write(f.read())
+                    
                 logger.info(f"Successfully served file: {file_path}")
             except Exception as e:
                 logger.error(f"Error reading file {file_path}: {e}")

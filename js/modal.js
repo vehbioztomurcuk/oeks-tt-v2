@@ -9,6 +9,9 @@ let liveViewIntervalId = null;
 let liveViewRefreshInterval = null;
 let liveViewRefreshRate = 3;
 
+// Add debounce timer at the top of the file
+let videoUpdateDebounceTimer = null;
+
 /**
  * Open modal with staff data
  * @param {string} staffId - ID of the staff member
@@ -113,7 +116,7 @@ function loadVideoForStaff(staffId, container) {
         const videoElement = document.createElement('video');
         videoElement.id = 'modal-video-player';
         videoElement.className = 'modal-video';
-        videoElement.autoplay = true;
+        videoElement.autoplay = false; // Set to false initially, we'll call play() later
         videoElement.controls = true;
         videoElement.muted = true;
         videoElement.loop = true;
@@ -142,9 +145,12 @@ function loadVideoForStaff(staffId, container) {
                     if (source) {
                         source.src = retryUrl;
                         videoElement.load();
-                        videoElement.play().catch(err => {
-                            console.warn('Retry autoplay error:', err);
-                        });
+                        // Add a delay before playing
+                        setTimeout(() => {
+                            videoElement.play().catch(err => {
+                                console.warn('Retry autoplay error:', err);
+                            });
+                        }, 100);
                     }
                 }, 1000 * attemptCount); // Wait longer with each retry
             } else {
@@ -160,6 +166,22 @@ function loadVideoForStaff(staffId, container) {
             if (loadingIndicator) {
                 loadingIndicator.remove();
             }
+            
+            // Try to play only after the data is fully loaded
+            videoElement.play().catch(err => {
+                console.warn('Autoplay error after load:', err);
+                // If autoplay fails, show a play button overlay
+                if (!container.querySelector('.play-overlay')) {
+                    const playOverlay = document.createElement('div');
+                    playOverlay.className = 'play-overlay';
+                    playOverlay.innerHTML = '<i class="fas fa-play-circle"></i>';
+                    playOverlay.addEventListener('click', () => {
+                        videoElement.play();
+                        playOverlay.style.display = 'none';
+                    });
+                    container.appendChild(playOverlay);
+                }
+            });
         });
         
         // Create a proper URL with a single timestamp parameter to prevent caching
@@ -190,11 +212,10 @@ function loadVideoForStaff(staffId, container) {
             videoElement.appendChild(source);
             container.appendChild(videoElement);
             
-            // Try to load and play
+            // Try to load
             videoElement.load();
-            videoElement.play().catch(err => {
-                console.warn('Autoplay error (may require user interaction):', err);
-            });
+            
+            // We'll play after loadeddata event
         } catch (error) {
             console.error("Error setting video source:", error);
             showVideoError("Video URL işlenirken hata oluştu");
@@ -215,7 +236,7 @@ function loadVideoForStaff(staffId, container) {
             const videoElement = document.createElement('video');
             videoElement.id = 'modal-video-player';
             videoElement.className = 'modal-video';
-            videoElement.autoplay = true;
+            videoElement.autoplay = false; // Set to false initially
             videoElement.controls = true;
             videoElement.muted = true;
             videoElement.loop = true;
@@ -231,12 +252,22 @@ function loadVideoForStaff(staffId, container) {
             videoElement.addEventListener('loadeddata', () => {
                 console.log("Fallback video loaded successfully");
                 // Remove error message
-                container.querySelector('.video-error').remove();
+                const errorMessage = container.querySelector('.video-error');
+                if (errorMessage) {
+                    errorMessage.remove();
+                }
                 // Remove loading indicator if it exists
                 const loadingIndicator = container.querySelector('.loading-indicator');
                 if (loadingIndicator) {
                     loadingIndicator.remove();
                 }
+                
+                // Try to play after loaded
+                setTimeout(() => {
+                    videoElement.play().catch(() => {
+                        console.warn("Fallback autoplay failed");
+                    });
+                }, 100);
             });
             
             try {
@@ -248,9 +279,9 @@ function loadVideoForStaff(staffId, container) {
                 videoElement.appendChild(source);
                 container.appendChild(videoElement);
                 
-                // Try to load and play
+                // Try to load
                 videoElement.load();
-                videoElement.play().catch(() => {});
+                // We'll play after loadeddata event
             } catch (error) {
                 console.error("Error setting fallback video source:", error);
             }
@@ -371,8 +402,25 @@ function setupLiveViewRefresh() {
 
 /**
  * Update live view with new video
+ * Uses debouncing to prevent rapid consecutive updates
  */
 function updateLiveView(staffId) {
+    // Clear any existing debounce timer
+    if (videoUpdateDebounceTimer) {
+        clearTimeout(videoUpdateDebounceTimer);
+    }
+    
+    // Set a new debounce timer (300ms delay)
+    videoUpdateDebounceTimer = setTimeout(() => {
+        _performVideoUpdate(staffId);
+    }, 300);
+}
+
+/**
+ * Actual implementation of video update (after debouncing)
+ * @private
+ */
+function _performVideoUpdate(staffId) {
     // Additional validation to prevent errors
     if (!staffId || staffId === 'unknown') {
         console.warn(`Invalid staff ID for live view update: ${staffId}`);
@@ -403,6 +451,13 @@ function updateLiveView(staffId) {
     // Check if there's a video element already
     const existingVideo = document.getElementById('modal-video-player');
     if (existingVideo) {
+        // First pause any existing playback to avoid AbortError
+        try {
+            existingVideo.pause();
+        } catch (e) {
+            console.warn('Error pausing video:', e);
+        }
+        
         // Create a new timestamp for cache busting
         const timestamp = Date.now();
         let videoUrl;
@@ -422,12 +477,26 @@ function updateLiveView(staffId) {
         // Update the source
         const source = existingVideo.querySelector('source');
         if (source) {
-            source.src = videoUrl;
-            existingVideo.load();
-            existingVideo.play().catch(err => {
-                console.warn('Autoplay error on refresh:', err);
-            });
-            console.log(`Updated video source to: ${videoUrl}`);
+            // Only update if source is different (ignoring timestamp)
+            const currentSrc = source.src.split('?')[0];
+            const newSrc = videoUrl.split('?')[0];
+            
+            if (currentSrc !== newSrc) {
+                console.log(`Changing video source from ${currentSrc} to ${newSrc}`);
+                source.src = videoUrl;
+                existingVideo.load();
+                
+                // Add a small delay before attempting to play
+                setTimeout(() => {
+                    existingVideo.play().catch(err => {
+                        console.warn('Autoplay error on refresh:', err);
+                    });
+                }, 100);
+                
+                console.log(`Updated video source to: ${videoUrl}`);
+            } else {
+                console.log('Video source unchanged, skipping refresh');
+            }
         }
     } else {
         // No existing video, need to reload it
