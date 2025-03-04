@@ -175,6 +175,76 @@ class HTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(response).encode())
             return
         
+        # New API endpoint for staff screenshot history
+        elif self.path.startswith('/api/staff-history/'):
+            staff_id = self.path.split('/api/staff-history/')[1].split('?')[0]
+            
+            # Check for query parameters
+            query_params = {}
+            if '?' in self.path:
+                query_string = self.path.split('?')[1]
+                for param in query_string.split('&'):
+                    if '=' in param:
+                        key, value = param.split('=', 1)
+                        query_params[key] = value
+            
+            # Default values
+            limit = int(query_params.get('limit', '20'))
+            date_filter = query_params.get('date', None)
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            
+            # Get staff screenshots directory
+            staff_dir = os.path.join(screenshots_dir, staff_id)
+            
+            if not os.path.exists(staff_dir) or not os.path.isdir(staff_dir):
+                self.wfile.write(json.dumps({"error": "Staff directory not found"}).encode())
+                return
+            
+            # Get screenshot files
+            screenshot_files = [f for f in os.listdir(staff_dir) if f.endswith('.jpg') and f != 'latest.jpg']
+            
+            # Apply date filter if provided (format: YYYYMMDD)
+            if date_filter:
+                screenshot_files = [f for f in screenshot_files if f.startswith(date_filter)]
+            
+            # Sort by modification time (newest first)
+            screenshot_files.sort(key=lambda x: os.path.getmtime(os.path.join(staff_dir, x)), reverse=True)
+            
+            # Limit results
+            screenshot_files = screenshot_files[:limit]
+            
+            # Build response
+            history_items = []
+            for file in screenshot_files:
+                file_path = os.path.join(staff_dir, file)
+                timestamp = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
+                history_items.append({
+                    "filename": file,
+                    "path": f"/screenshots/{staff_id}/{file}",
+                    "timestamp": timestamp
+                })
+            
+            # Get available dates for filtering
+            all_dates = set()
+            for file in os.listdir(staff_dir):
+                if file.endswith('.jpg') and file != 'latest.jpg' and len(file) >= 8:
+                    date_part = file[:8]  # Extract YYYYMMDD part
+                    if date_part.isdigit() and len(date_part) == 8:
+                        all_dates.add(date_part)
+            
+            response = {
+                "staffId": staff_id,
+                "history": history_items,
+                "availableDates": sorted(list(all_dates), reverse=True)
+            }
+            
+            self.wfile.write(json.dumps(response).encode())
+            return
+        
         # Serve static files (screenshots)
         elif self.path.startswith('/screenshots/'):
             # Parse URL to extract path without query string
