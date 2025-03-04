@@ -418,9 +418,14 @@
         
         .history-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+            max-height: 250px;
+            overflow-y: auto;
+            padding: 5px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary-color) var(--background-color);
         }
         
         .history-controls {
@@ -463,7 +468,7 @@
         
         .history-playback-container {
             position: relative;
-            background-color: #222;
+            background-color: #111;
             border-radius: 5px;
             overflow: hidden;
             margin-bottom: 20px;
@@ -471,12 +476,14 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            border: 1px solid var(--border-dark);
         }
         
         #history-playback-image {
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
+            transition: opacity 0.3s ease;
         }
         
         #history-timeline {
@@ -540,6 +547,62 @@
             font-size: 0.8rem;
             color: var(--text-muted);
             text-align: center;
+        }
+
+        /* Enhanced history section styles */
+        .history-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+            max-height: 250px;
+            overflow-y: auto;
+            padding: 5px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary-color) var(--background-color);
+        }
+        
+        .history-grid::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .history-grid::-webkit-scrollbar-track {
+            background: var(--background-color);
+        }
+        
+        .history-grid::-webkit-scrollbar-thumb {
+            background-color: var(--primary-color);
+            border-radius: 20px;
+        }
+        
+        /* Error display */
+        .error-details {
+            font-size: 0.8rem;
+            color: var(--danger-color);
+            margin-top: 5px;
+            max-width: 300px;
+            overflow-wrap: break-word;
+        }
+        
+        /* Improved playback container */
+        .history-playback-container {
+            position: relative;
+            background-color: #111;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            height: 300px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 1px solid var(--border-dark);
+        }
+        
+        #history-playback-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            transition: opacity 0.3s ease;
         }
     </style>
 </head>
@@ -749,7 +812,7 @@
             search: ""
         };
         
-        // Variables for history playback
+        // Initialize history variables
         let historyItems = [];
         let currentHistoryIndex = 0;
         let historyPlaybackInterval = null;
@@ -887,48 +950,50 @@
             liveViewStaffId = staffId;
             const staff = staffMembers[staffId];
             
-            document.getElementById('modal-staff-name').textContent = staff.name;
+            document.getElementById('modal-staff-name').textContent = staff.name || "Bilinmeyen Kullanıcı";
             document.getElementById('detail-staff-id').textContent = staffId;
-            document.getElementById('detail-name').textContent = staff.name;
-            document.getElementById('detail-division').textContent = staff.division;
+            document.getElementById('detail-name').textContent = staff.name || "Bilinmeyen Kullanıcı";
+            document.getElementById('detail-division').textContent = staff.division || "Tanımlanmamış";
             
             const now = new Date();
             const screenshotTime = new Date(staff.timestamp);
             const timeDiff = Math.round((now - screenshotTime) / 1000);
-            const isActive = timeDiff < 60;
             
-            document.getElementById('detail-status').textContent = isActive ? 'Aktif' : 'İnaktif';
-            document.getElementById('detail-status').style.color = isActive ? 'var(--success-color)' : 'var(--danger-color)';
+            // Determine activity status
+            let statusText = 'İnaktif';
+            let statusColor = 'var(--danger-color)';
+            
+            if (staff.activity_status === 'active') {
+                statusText = 'Aktif';
+                statusColor = 'var(--success-color)';
+            } else if (staff.activity_status === 'idle') {
+                statusText = 'Beklemede';
+                statusColor = 'var(--warning-color)';
+            } else if (timeDiff < 60) {
+                // Fallback to time-based status if no explicit status
+                statusText = 'Aktif';
+                statusColor = 'var(--success-color)';
+            }
+            
+            document.getElementById('detail-status').textContent = statusText;
+            document.getElementById('detail-status').style.color = statusColor;
             document.getElementById('detail-last-time').textContent = `${formatTimeDiff(now, screenshotTime)} önce`;
             
-            // Clear history grid and update with data
-            const historyGrid = document.getElementById('history-grid');
-            historyGrid.innerHTML = '<div class="empty-state"><i class="fas fa-spinner refresh-animation"></i><p>Geçmiş yükleniyor...</p></div>';
-            
-            // Stop any existing playback
-            stopHistoryPlayback();
-            
-            // Set initial live image
-            const liveImage = document.getElementById('live-image');
-            liveImage.src = `${staff.path}?t=${now.getTime()}`;
+            // Clear history playback
+            document.getElementById('history-playback-image').src = '';
+            document.getElementById('history-playback-image').style.opacity = '0';
+            document.getElementById('history-timestamp').textContent = '--:--:--';
             
             // Show modal
             document.getElementById('live-view-modal').style.display = 'block';
             
-            // Start refresh
+            // Start refresh for live view
             setupLiveViewRefresh();
             
-            // Fetch history
-            fetchStaffHistory(staffId)
-                .catch(error => {
-                    console.error('Error fetching history:', error);
-                    historyGrid.innerHTML = `
-                        <div class="empty-state">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <p>Geçmiş yüklenirken hata oluştu</p>
-                        </div>
-                    `;
-                });
+            // Fetch history data
+            fetchStaffHistory(staffId).catch(err => {
+                console.error("Error loading staff history:", err);
+            });
         }
         
         // Close modal
@@ -1275,82 +1340,93 @@
                 socket.close();
             }
             
-            // Create new WebSocket connection
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws`;
-            
-            socket = new WebSocket(wsUrl);
-            
-            socket.onopen = () => {
-                console.log('WebSocket bağlantısı kuruldu');
-                updateConnectionStatus('connected');
-            };
-            
-            socket.onmessage = (event) => {
-                // Handle real-time updates
-                try {
-                    const data = JSON.parse(event.data);
-                    
-                    if (data.type === 'screenshot_update') {
-                        // Update specific staff card
-                        const staffId = data.staffId;
-                        const info = data.screenshotInfo;
-                        
-                        // Update staffMembers object
-                        staffMembers[staffId] = info;
-                        
-                        // Update card if visible
-                        const staffCard = document.getElementById(`staff-${staffId}`);
-                        if (staffCard) {
-                            const timestamp = new Date(info.timestamp);
-                            const now = new Date();
-                            const isActive = (now - timestamp) / 1000 < 60;
-                            
-                            staffCard.querySelector('.staff-header').innerHTML = `
-                                <span>
-                                    <span class="status-indicator ${isActive ? 'status-active' : 'status-inactive'}"></span>
-                                    <strong>${info.name || "Bilinmeyen Kullanıcı"}</strong> 
-                                    <span class="badge">${info.division || "Tanımlanmamış"}</span>
-                                </span>
-                                <span>${formatTimeDiff(now, timestamp)} önce</span>
-                            `;
-                            
-                            staffCard.querySelector('.staff-image').src = `${info.path}?t=${Date.now()}`;
-                            staffCard.querySelector('.timestamp').innerHTML = `
-                                <span>${staffId}</span> - ${timestamp.toLocaleString('tr-TR')}
-                            `;
-                            
-                            // If this staff member is being viewed in live view, update that too
-                            if (liveViewStaffId === staffId) {
-                                updateLiveView();
-                            }
-                            
-                            // Increment screenshot count
-                            totalScreenshots++;
-                            document.getElementById('total-screenshots').textContent = totalScreenshots.toString();
-                            
-                            // Update last update time
-                            document.getElementById('last-update').textContent = now.toLocaleTimeString();
-                        }
-                    }
-                } catch (error) {
-                    console.error('WebSocket mesajı işlenirken hata:', error);
-                }
-            };
-            
-            socket.onclose = (event) => {
-                console.log('WebSocket bağlantısı kapandı:', event.code, event.reason);
-                // Don't change the status to "reconnecting"
-                updateConnectionStatus('connected');
+            try {
+                // Create new WebSocket connection
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const host = window.location.hostname || 'localhost';
+                const port = window.location.port || '8080';
+                const wsUrl = `${protocol}//${host}:${port}/ws`;
                 
-                // Attempt to reconnect after a delay
-                setTimeout(connectWebSocket, 3000);
-            };
-            
-            socket.onerror = (error) => {
-                console.error('WebSocket hatası:', error);
+                console.log("Attempting WebSocket connection to:", wsUrl);
+                socket = new WebSocket(wsUrl);
+                
+                socket.onopen = () => {
+                    console.log('WebSocket bağlantısı kuruldu');
+                    updateConnectionStatus('connected');
+                };
+                
+                socket.onmessage = (event) => {
+                    // Handle real-time updates
+                    try {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.type === 'screenshot_update') {
+                            // Update specific staff card
+                            const staffId = data.staffId;
+                            const info = data.screenshotInfo;
+                            
+                            // Update staffMembers object
+                            staffMembers[staffId] = info;
+                            
+                            // Update card if visible
+                            const staffCard = document.getElementById(`staff-${staffId}`);
+                            if (staffCard) {
+                                const timestamp = new Date(info.timestamp);
+                                const now = new Date();
+                                const isActive = (now - timestamp) / 1000 < 60;
+                                
+                                staffCard.querySelector('.staff-header').innerHTML = `
+                                    <span>
+                                        <span class="status-indicator ${isActive ? 'status-active' : 'status-inactive'}"></span>
+                                        <strong>${info.name || "Bilinmeyen Kullanıcı"}</strong> 
+                                        <span class="badge">${info.division || "Tanımlanmamış"}</span>
+                                    </span>
+                                    <span>${formatTimeDiff(now, timestamp)} önce</span>
+                                `;
+                                
+                                staffCard.querySelector('.staff-image').src = `${info.path}?t=${Date.now()}`;
+                                staffCard.querySelector('.timestamp').innerHTML = `
+                                    <span>${staffId}</span> - ${timestamp.toLocaleString('tr-TR')}
+                                `;
+                                
+                                // If this staff member is being viewed in live view, update that too
+                                if (liveViewStaffId === staffId) {
+                                    updateLiveView();
+                                }
+                                
+                                // Increment screenshot count
+                                totalScreenshots++;
+                                document.getElementById('total-screenshots').textContent = totalScreenshots.toString();
+                                
+                                // Update last update time
+                                document.getElementById('last-update').textContent = now.toLocaleTimeString();
+                            }
+                        }
+                    } catch (error) {
+                        console.error('WebSocket mesajı işlenirken hata:', error);
+                    }
+                };
+                
+                socket.onclose = (event) => {
+                    console.log('WebSocket bağlantısı kapandı:', event.code, event.reason);
+                    // Don't change the status to "reconnecting"
+                    updateConnectionStatus('connected');
+                    
+                    // Attempt to reconnect after a delay
+                    setTimeout(connectWebSocket, 3000);
+                };
+                
+                socket.onerror = (error) => {
+                    console.error('WebSocket hatası:', error);
+                    updateConnectionStatus('error');
+                };
+            } catch (error) {
+                console.error("WebSocket connection error:", error);
                 updateConnectionStatus('error');
-            };
+                
+                // Retry connection after delay
+                setTimeout(connectWebSocket, 5000);
+            }
         }
         
         // Initial WebSocket connection
@@ -1433,6 +1509,22 @@
 
         // Function to fetch staff history
         function fetchStaffHistory(staffId, dateFilter = 'all') {
+            // Show loading state
+            const historyGrid = document.getElementById('history-grid');
+            historyGrid.innerHTML = '<div class="empty-state"><i class="fas fa-spinner refresh-animation"></i><p>Geçmiş yükleniyor...</p></div>';
+            
+            // Reset history state
+            historyItems = [];
+            currentHistoryIndex = 0;
+            
+            // Stop any playback
+            stopHistoryPlayback();
+            
+            // Hide playback image until loaded
+            document.getElementById('history-playback-image').style.opacity = '0';
+            document.getElementById('history-timestamp').textContent = '--:--:--';
+            document.getElementById('history-counter').textContent = '0/0';
+            
             const url = dateFilter === 'all' 
                 ? `/api/staff-history/${staffId}?limit=50` 
                 : `/api/staff-history/${staffId}?date=${dateFilter}&limit=50`;
@@ -1445,6 +1537,8 @@
                     return response.json();
                 })
                 .then(data => {
+                    console.log("History data received:", data); // Debug log
+                    
                     // Update history items
                     historyItems = data.history || [];
                     currentHistoryIndex = 0;
@@ -1454,7 +1548,7 @@
                     dateFilter.innerHTML = '<option value="all">Tümü</option>';
                     
                     (data.availableDates || []).forEach(date => {
-                        const formattedDate = `${date.substring(0, 4)}-${date.substring(4, 6)}-${date.substring(6, 8)}`;
+                        const formattedDate = new Date(`${date.substring(0, 4)}-${date.substring(4, 6)}-${date.substring(6, 8)}`).toLocaleDateString('tr-TR');
                         const option = document.createElement('option');
                         option.value = date;
                         option.textContent = formattedDate;
@@ -1464,10 +1558,24 @@
                     // Update history grid
                     updateHistoryGrid();
                     
-                    // Update playback
-                    updateHistoryPlayback();
+                    // Update playback (if we have items)
+                    if (historyItems.length > 0) {
+                        updateHistoryPlayback();
+                        document.getElementById('history-playback-image').style.opacity = '1';
+                    }
                     
                     return data;
+                })
+                .catch(error => {
+                    console.error('Error fetching history:', error);
+                    historyGrid.innerHTML = `
+                        <div class="empty-state">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <p>Geçmiş yüklenirken hata oluştu</p>
+                            <p class="error-details">${error.message}</p>
+                        </div>
+                    `;
+                    throw error;
                 });
         }
 
@@ -1490,18 +1598,24 @@
             historyItems.forEach((item, index) => {
                 const historyItem = document.createElement('div');
                 historyItem.className = 'history-item';
+                if (index === currentHistoryIndex) {
+                    historyItem.classList.add('current');
+                }
                 
                 // Extract time from filename or use timestamp
-                let timeDisplay = new Date(item.timestamp).toLocaleTimeString();
-                if (item.filename.includes('_')) {
-                    const timePart = item.filename.split('_')[1];
-                    if (timePart) {
-                        timeDisplay = `${timePart.substring(0, 2)}:${timePart.substring(2, 4)}:${timePart.substring(4, 6)}`;
+                let timeDisplay = new Date(item.timestamp).toLocaleTimeString('tr-TR');
+                if (item.filename && item.filename.includes('_')) {
+                    const parts = item.filename.split('_');
+                    if (parts.length >= 2) {
+                        const timePart = parts[1];
+                        if (timePart.length >= 6) {
+                            timeDisplay = `${timePart.substring(0, 2)}:${timePart.substring(2, 4)}:${timePart.substring(4, 6)}`;
+                        }
                     }
                 }
                 
                 historyItem.innerHTML = `
-                    <img class="history-image" src="${item.path}" alt="Ekran görüntüsü">
+                    <img class="history-image" src="${item.path}?t=${Date.now()}" alt="Ekran görüntüsü" loading="lazy">
                     <div class="history-timestamp">${timeDisplay}</div>
                 `;
                 
@@ -1531,17 +1645,28 @@
             }
             
             const item = historyItems[currentHistoryIndex];
-            document.getElementById('history-playback-image').src = `${item.path}?t=${Date.now()}`;
+            if (!item) {
+                console.error('Invalid history item index:', currentHistoryIndex);
+                return;
+            }
+            
+            // Load the playback image with cache-busting query param
+            const playbackImage = document.getElementById('history-playback-image');
+            playbackImage.src = `${item.path}?t=${Date.now()}`;
             
             // Extract time from filename or use timestamp
-            let timeDisplay = new Date(item.timestamp).toLocaleTimeString();
-            if (item.filename.includes('_')) {
-                const timePart = item.filename.split('_')[1];
-                if (timePart) {
-                    timeDisplay = `${timePart.substring(0, 2)}:${timePart.substring(2, 4)}:${timePart.substring(4, 6)}`;
+            let timeDisplay = new Date(item.timestamp).toLocaleTimeString('tr-TR');
+            if (item.filename && item.filename.includes('_')) {
+                const parts = item.filename.split('_');
+                if (parts.length >= 2) {
+                    const timePart = parts[1];
+                    if (timePart.length >= 6) {
+                        timeDisplay = `${timePart.substring(0, 2)}:${timePart.substring(2, 4)}:${timePart.substring(4, 6)}`;
+                    }
                 }
             }
             
+            // Update UI elements
             document.getElementById('history-timestamp').textContent = timeDisplay;
             document.getElementById('history-counter').textContent = `${currentHistoryIndex + 1}/${historyItems.length}`;
             
@@ -1549,11 +1674,19 @@
             const progress = ((currentHistoryIndex + 1) / historyItems.length) * 100;
             document.getElementById('history-timeline').style.setProperty('--progress', `${progress}%`);
             
-            // Highlight current item in the grid
-            const historyItems = document.querySelectorAll('.history-item');
-            historyItems.forEach((item, index) => {
+            // Update class on grid items
+            const historyItemElements = document.querySelectorAll('.history-item');
+            historyItemElements.forEach((item, index) => {
                 if (index === currentHistoryIndex) {
                     item.classList.add('current');
+                    // Scroll into view if needed
+                    const container = document.getElementById('history-grid');
+                    const itemRect = item.getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
+                    
+                    if (itemRect.bottom > containerRect.bottom || itemRect.top < containerRect.top) {
+                        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
                 } else {
                     item.classList.remove('current');
                 }
@@ -1576,7 +1709,7 @@
             historyPlaybackInterval = setInterval(() => {
                 currentHistoryIndex = (currentHistoryIndex + 1) % historyItems.length;
                 updateHistoryPlayback();
-            }, 333);
+            }, 333); // 3fps
         }
 
         // Stop playback
@@ -1617,19 +1750,18 @@
             updateHistoryPlayback();
         }
 
-        // Add event listeners for history controls when the document is loaded
+        // Initialize event listeners at document ready
         document.addEventListener('DOMContentLoaded', function() {
-            // Add history playback controls
+            // Set up history controls
             const playBtn = document.getElementById('history-play-btn');
             const prevBtn = document.getElementById('history-prev-btn');
             const nextBtn = document.getElementById('history-next-btn');
+            const dateFilter = document.getElementById('history-date-filter');
             
             if (playBtn) playBtn.addEventListener('click', toggleHistoryPlayback);
             if (prevBtn) prevBtn.addEventListener('click', previousHistoryItem);
             if (nextBtn) nextBtn.addEventListener('click', nextHistoryItem);
             
-            // History date filter
-            const dateFilter = document.getElementById('history-date-filter');
             if (dateFilter) {
                 dateFilter.addEventListener('change', (e) => {
                     if (liveViewStaffId) {
