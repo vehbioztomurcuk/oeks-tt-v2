@@ -50,13 +50,28 @@ function openModal(staffId) {
             (staff.recording_status === 'active' ? 'status-active' : 'status-inactive');
     }
     
+    // Load screenshot history for this staff member
+    fetchStaffHistory(staffId);
+    
     // Show modal immediately
     document.getElementById('live-view-modal').style.display = 'block';
     
-    // Set up a slower refresh for the modal info
-    liveViewRefreshInterval = setInterval(() => {
-        updateDetailInfo(staffId);
-    }, 10000);
+    // Set up a refresh interval for both the modal info and the video (if active)
+    if (staff.recording_status === 'active') {
+        // Active staff - refresh more frequently (every 3-10 seconds based on selector)
+        liveViewRefreshInterval = setInterval(() => {
+            updateDetailInfo(staffId);
+            // Also refresh the video if active
+            if (liveViewStaffId === staffId) {
+                updateLiveView(staffId);
+            }
+        }, liveViewRefreshRate * 1000);
+    } else {
+        // Inactive staff - slower refresh just for info
+        liveViewRefreshInterval = setInterval(() => {
+            updateDetailInfo(staffId);
+        }, 10000);
+    }
     
     // Get the video container
     const videoContainer = document.querySelector('.modal-video-container');
@@ -69,10 +84,23 @@ function openModal(staffId) {
         </div>
     `;
     
+    loadVideoForStaff(staffId, videoContainer);
+}
+
+/**
+ * Load video for a staff member into the provided container
+ * @param {string} staffId - ID of the staff member
+ * @param {HTMLElement} container - Container element for the video
+ */
+function loadVideoForStaff(staffId, container) {
+    const staff = staffMembers[staffId];
+    if (!staff) return;
+    
     // Only try to load video if there's a valid path
     if (staff.video_path && staff.video_path !== "null" && staff.video_path !== null && !staff.video_path.includes("/null")) {
         // Create the video element
         const videoElement = document.createElement('video');
+        videoElement.id = 'modal-video-player';
         videoElement.className = 'modal-video';
         videoElement.autoplay = true;
         videoElement.controls = true;
@@ -90,21 +118,29 @@ function openModal(staffId) {
         videoElement.addEventListener('loadeddata', () => {
             console.log("Video loaded successfully");
             // Remove loading indicator if it exists
-            const loadingIndicator = videoContainer.querySelector('.loading-indicator');
+            const loadingIndicator = container.querySelector('.loading-indicator');
             if (loadingIndicator) {
                 loadingIndicator.remove();
             }
         });
         
-        // Create a proper URL with a single timestamp parameter
+        // Create a proper URL with a single timestamp parameter to prevent caching
         const timestamp = Date.now();
         let videoUrl;
         
         try {
-            videoUrl = staff.video_path.includes('?') 
-                ? staff.video_path.split('?')[0] + `?t=${timestamp}` 
-                : `${staff.video_path}?t=${timestamp}`;
-                
+            // For staff_pc_141, always try to use latest.mp4 directly
+            if (staffId === 'staff_pc_141') {
+                videoUrl = `videos/${staffId}/latest.mp4?t=${timestamp}`;
+            } else {
+                // For other staff, use the video path from staffInfo
+                let cleanPath = staff.video_path;
+                if (cleanPath.includes('?')) {
+                    cleanPath = cleanPath.split('?')[0];
+                }
+                videoUrl = `${cleanPath}?t=${timestamp}`;
+            }
+            
             console.log(`Trying to load video from: ${videoUrl}`);
             
             // Set the source
@@ -113,7 +149,7 @@ function openModal(staffId) {
             source.type = 'video/mp4';
             
             videoElement.appendChild(source);
-            videoContainer.appendChild(videoElement);
+            container.appendChild(videoElement);
             
             // Try to load and play
             videoElement.load();
@@ -129,9 +165,6 @@ function openModal(staffId) {
         console.warn("No valid video path for staff:", staffId, staff.video_path);
         showVideoError("Bu kullanıcı için video kaydı bulunmamaktadır");
     }
-    
-    // Load screenshot history for this staff member
-    fetchStaffHistory(staffId);
 }
 
 /**
@@ -211,18 +244,74 @@ function initializeModal() {
 }
 
 /**
- * Setup live view refresh (currently a no-op)
+ * Setup live view refresh
  */
 function setupLiveViewRefresh() {
-    // This function intentionally does nothing now
-    // We're handling refresh in openModal with a much longer interval
-    // This prevents the constant reload of videos that was causing issues
+    if (!liveViewStaffId) return;
+    
+    if (liveViewRefreshInterval) {
+        clearInterval(liveViewRefreshInterval);
+    }
+    
+    // Set up interval to refresh the video based on the selected refresh rate
+    liveViewRefreshInterval = setInterval(() => {
+        updateLiveView(liveViewStaffId);
+    }, liveViewRefreshRate * 1000);
+    
+    console.log(`Set up live view refresh for ${liveViewStaffId} every ${liveViewRefreshRate} seconds`);
 }
 
 /**
- * Update live view (currently a no-op)
+ * Update live view with new video
  */
-function updateLiveView() {
-    // This function intentionally does nothing now
-    // We're letting the video play without interruption
+function updateLiveView(staffId) {
+    if (!staffId) return;
+    
+    // Check if the staff exists and is active
+    const staff = staffMembers[staffId];
+    if (!staff || staff.recording_status !== 'active') return;
+    
+    console.log(`Updating live view for ${staffId}`);
+    
+    // Refresh the staff data from the server first
+    fetchStaffList().then(() => {
+        const videoContainer = document.querySelector('.modal-video-container');
+        if (!videoContainer) return;
+        
+        // Check if there's a video element already
+        const existingVideo = document.getElementById('modal-video-player');
+        if (existingVideo) {
+            // Create a new timestamp for cache busting
+            const timestamp = Date.now();
+            let videoUrl;
+            
+            // For staff_pc_141, always try to use latest.mp4 directly
+            if (staffId === 'staff_pc_141') {
+                videoUrl = `videos/${staffId}/latest.mp4?t=${timestamp}`;
+            } else {
+                // For other staff, use the video path from staffInfo
+                let cleanPath = staff.video_path;
+                if (cleanPath.includes('?')) {
+                    cleanPath = cleanPath.split('?')[0];
+                }
+                videoUrl = `${cleanPath}?t=${timestamp}`;
+            }
+            
+            // Update the source
+            const source = existingVideo.querySelector('source');
+            if (source) {
+                source.src = videoUrl;
+                existingVideo.load();
+                existingVideo.play().catch(err => {
+                    console.warn('Autoplay error on refresh:', err);
+                });
+                console.log(`Updated video source to: ${videoUrl}`);
+            }
+        } else {
+            // No existing video, need to reload it
+            loadVideoForStaff(staffId, videoContainer);
+        }
+    }).catch(error => {
+        console.error("Error refreshing staff data:", error);
+    });
 } 

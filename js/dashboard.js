@@ -321,22 +321,43 @@ function updateDashboard(data) {
         
         // Add video or placeholder based on video path
         if (hasValidVideo) {
-            // Get a clean path and timestamp for cache busting
-            const timestamp = new Date().getTime();
-            const videoPath = staffInfo.video_path.includes('?') 
-                ? staffInfo.video_path + '&t=' + timestamp 
-                : staffInfo.video_path + '?t=' + timestamp;
+            // Get a clean path and timestamp for cache busting - use more aggressive timestamp
+            const timestamp = Date.now();
+            let cleanPath = staffInfo.video_path;
+            
+            // Remove any existing query parameters for clean URL generation
+            if (cleanPath.includes('?')) {
+                cleanPath = cleanPath.split('?')[0];
+            }
+            
+            // Add timestamp to prevent browser caching
+            const videoPath = `${cleanPath}?t=${timestamp}`;
+            
+            // For staff_pc_141, always try to load latest.mp4 directly
+            if (staffId === 'staff_pc_141') {
+                const directLatestPath = `videos/${staffId}/latest.mp4?t=${timestamp}`;
+                console.log(`Trying direct latest.mp4 path for ${staffId}: ${directLatestPath}`);
                 
-            cardHTML += `
-                <video autoplay muted loop playsinline>
-                    <source src="${videoPath}" type="video/mp4">
-                </video>
-                <div class="overlay">
-                    <i class="fas fa-search-plus"></i>
-                </div>
-            `;
+                cardHTML += `
+                    <video autoplay muted loop playsinline>
+                        <source src="${directLatestPath}" type="video/mp4">
+                    </video>
+                    <div class="overlay">
+                        <i class="fas fa-search-plus"></i>
+                    </div>
+                `;
+            } else {
+                cardHTML += `
+                    <video autoplay muted loop playsinline>
+                        <source src="${videoPath}" type="video/mp4">
+                    </video>
+                    <div class="overlay">
+                        <i class="fas fa-search-plus"></i>
+                    </div>
+                `;
+            }
         } else {
-            // If staff is staff_pc_141, create test video for debugging
+            // If this is staff_pc_141, create a more specific placeholder
             if (staffId === 'staff_pc_141') {
                 console.log("Creating test video for staff_pc_141");
                 cardHTML += `
@@ -344,7 +365,7 @@ function updateDashboard(data) {
                         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; text-align: center;">
                             <i class="fas fa-video-slash" style="font-size: 2rem;"></i>
                             <p>Video yok</p>
-                            <p>İzleme Durumu: ${staffInfo.recording_status}</p>
+                            <p>Kayıt durumunda ama video bulunamadı</p>
                             <p>${new Date(staffInfo.timestamp).toLocaleTimeString('tr-TR')}</p>
                         </div>
                     </div>
