@@ -630,9 +630,29 @@ def get_staff_list():
     videos_dir = config.get("videos_dir", "videos")
     screenshots_dir = config.get("screenshots_dir", "screenshots")
     
+    # Add more detailed logging
+    logger.info(f"Looking for videos in directory: {os.path.abspath(videos_dir)}")
+    if os.path.exists(videos_dir):
+        logger.info(f"Video directory exists, contents: {os.listdir(videos_dir)}")
+        for subdir in [d for d in os.listdir(videos_dir) if os.path.isdir(os.path.join(videos_dir, d))]:
+            subdir_path = os.path.join(videos_dir, subdir)
+            logger.info(f"Checking subdirectory: {subdir_path}, contents: {os.listdir(subdir_path) if os.path.exists(subdir_path) else 'not found'}")
+    else:
+        logger.error(f"Video directory does not exist: {os.path.abspath(videos_dir)}")
+    
     response = {
         "staffList": [],
         "staffData": {}
+    }
+    
+    # Even if we don't find any videos, let's add some default entries for debugging
+    response["staffList"].append("staff_pc_141")
+    response["staffData"]["staff_pc_141"] = {
+        "name": "Vehbi OZTOMURCUK",
+        "division": "Marketing",
+        "recording_status": "active",
+        "timestamp": datetime.now().isoformat(),
+        "video_path": None  # We'll set this to a real path if we find videos
     }
     
     try:
@@ -641,6 +661,8 @@ def get_staff_list():
             # First check for videos directly in the videos directory (without staff subfolders)
             direct_video_files = [f for f in os.listdir(videos_dir) 
                                 if f.endswith('.mp4') and os.path.isfile(os.path.join(videos_dir, f))]
+            
+            logger.info(f"Found {len(direct_video_files)} MP4 files in main videos directory: {direct_video_files}")
             
             # Process direct video files
             for video_file in direct_video_files:

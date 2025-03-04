@@ -276,13 +276,33 @@ function updateDashboard(data) {
         
         // Determine if we have a valid video path
         const hasValidVideo = staffInfo.video_path && 
-                            staffInfo.video_path !== "null" && 
-                            staffInfo.video_path !== null &&
-                            !staffInfo.video_path.includes("/null");
+                           staffInfo.video_path !== "null" && 
+                           staffInfo.video_path !== null &&
+                           !staffInfo.video_path.includes("/null");
+        
+        console.log(`Staff ${staffId} video path: ${staffInfo.video_path}, valid: ${hasValidVideo}`);
         
         // Create HTML for the video container
         let videoHTML;
-        if (hasValidVideo) {
+        
+        // For testing purpose, let's create a placeholder video with a solid color background
+        // This will help us verify that the video element itself works correctly
+        if (!hasValidVideo && staffId === "staff_pc_141") {
+            console.log("Creating test video for staff_pc_141");
+            videoHTML = `
+                <div class="video-container">
+                    <div style="background-color:#3498db; width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:white;">
+                        <div style="text-align:center;">
+                            <div>Test Video</div>
+                            <div>No real video file found</div>
+                            <div>Please run staff_app.py</div>
+                        </div>
+                    </div>
+                    <div class="video-status">${staffInfo.recording_status === 'active' ? 'Aktif' : 'İnaktif'}</div>
+                    <div class="video-timestamp">${timestamp.toLocaleTimeString('tr-TR')}</div>
+                </div>
+            `;
+        } else if (hasValidVideo) {
             // Ensure we don't have duplicate timestamp parameters
             const videoUrl = staffInfo.video_path.includes('?') 
                 ? staffInfo.video_path.split('?')[0] + `?t=${Date.now()}` 
