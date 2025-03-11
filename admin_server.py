@@ -179,6 +179,42 @@ class HTTPHandler(BaseHTTPRequestHandler):
                     self.wfile.write(b'Screenshot file not found')
                     return
                 
+            # Handle video files
+            elif path.startswith("/screenshots/") and path.endswith(".mp4"):
+                clean_path = parsed_url.path[1:]  # Remove leading slash
+                file_path = os.path.join(os.getcwd(), clean_path)
+                
+                logger.info(f"Request for video file: {path}, serving from: {file_path}")
+                
+                if os.path.exists(file_path) and os.path.isfile(file_path):
+                    self.send_response(200)
+                    self.send_header('Content-type', 'video/mp4')
+                    self.send_header('Content-Length', str(os.path.getsize(file_path)))
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.send_header('Accept-Ranges', 'bytes')  # Important for video seeking
+                    self.end_headers()
+                    
+                    try:
+                        with open(file_path, 'rb') as f:
+                            # Read in chunks to avoid memory issues with large videos
+                            chunk_size = 1024 * 64  # 64KB chunks
+                            while True:
+                                chunk = f.read(chunk_size)
+                                if not chunk:
+                                    break
+                                self.wfile.write(chunk)
+                        logger.info(f"Successfully served video file: {file_path}")
+                    except Exception as e:
+                        logger.error(f"Error reading video file {file_path}: {e}")
+                    return
+                else:
+                    logger.warning(f"Video file not found: {file_path}")
+                    self.send_response(404)
+                    self.send_header('Content-type', 'text/plain')
+                    self.end_headers()
+                    self.wfile.write(b'Video file not found')
+                    return
+            
             # Serve other static files
             else:
                 # Assume it's a static file (strip leading /)
@@ -967,14 +1003,30 @@ def generate_staff_video(staff_id, duration_minutes=5):
         first_img = cv2.imread(recent_files[0][0])
         height, width, _ = first_img.shape
         
-        # Create video writer
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        video_writer = cv2.VideoWriter(video_path, fourcc, 1, (width, height))
+        # Create video writer with H.264 codec for better browser compatibility
+        # Use avc1 codec which is more widely supported in browsers
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')
+        
+        # If avc1 is not available, fall back to mp4v
+        try:
+            video_writer = cv2.VideoWriter(video_path, fourcc, 1, (width, height))
+            # Test if the writer is initialized properly
+            if not video_writer.isOpened():
+                logger.warning("avc1 codec not available, falling back to mp4v")
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                video_writer = cv2.VideoWriter(video_path, fourcc, 1, (width, height))
+        except Exception as e:
+            logger.warning(f"Error with avc1 codec: {e}, falling back to mp4v")
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            video_writer = cv2.VideoWriter(video_path, fourcc, 1, (width, height))
         
         # Add each image to the video
         for file_path, _ in recent_files:
             img = cv2.imread(file_path)
-            video_writer.write(img)
+            if img is not None:  # Make sure the image was loaded successfully
+                video_writer.write(img)
+            else:
+                logger.warning(f"Could not read image: {file_path}")
         
         # Release the video writer
         video_writer.release()

@@ -133,7 +133,7 @@ function playStaffVideo(videoItem) {
     videoModal.style.display = 'block';
     videoModal.style.zIndex = '2000'; // Higher than the staff modal
     
-    // Add video content
+    // Add video content with loading indicator
     videoModal.innerHTML = `
         <div class="modal-content" style="width: 80%; max-width: 1000px;">
             <div class="modal-header">
@@ -143,8 +143,11 @@ function playStaffVideo(videoItem) {
                 </button>
             </div>
             <div class="modal-body">
-                <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
-                    <video controls autoplay style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
+                <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;" class="video-container">
+                    <div class="loading-indicator" style="position:absolute; top:0; left:0; right:0; bottom:0; display:flex; justify-content:center; align-items:center; background-color:#111; z-index:1;">
+                        <i class="fas fa-spinner refresh-animation" style="font-size:2rem; color:#3498db;"></i>
+                    </div>
+                    <video controls style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index:0;">
                         <source src="${videoItem.path}?t=${Date.now()}" type="video/mp4">
                         Video oynatılamıyor.
                     </video>
@@ -159,6 +162,32 @@ function playStaffVideo(videoItem) {
     
     // Add to document
     document.body.appendChild(videoModal);
+    
+    // Get the video element and add event listeners
+    const videoElement = videoModal.querySelector('video');
+    const loadingIndicator = videoModal.querySelector('.loading-indicator');
+    
+    // Hide loading indicator when video can play
+    videoElement.addEventListener('canplay', () => {
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'none';
+        }
+        videoElement.style.zIndex = '2'; // Bring video to front
+        videoElement.play().catch(e => console.error('Error playing video:', e));
+    });
+    
+    // Show error if video fails to load
+    videoElement.addEventListener('error', () => {
+        if (loadingIndicator) {
+            loadingIndicator.innerHTML = `
+                <div style="text-align:center; color:#e74c3c;">
+                    <i class="fas fa-exclamation-triangle" style="font-size:2rem; margin-bottom:10px;"></i>
+                    <p>Video yüklenirken hata oluştu.</p>
+                    <p style="font-size:0.8rem; margin-top:10px;">Dosya: ${videoItem.path}</p>
+                </div>
+            `;
+        }
+    });
     
     // Close when clicking outside
     videoModal.addEventListener('click', (e) => {
