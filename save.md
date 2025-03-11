@@ -19,3 +19,6 @@ VIDEO OK.
 6. VIDEONUN SAG UST KOSESINDE HANGI ZAMAN ARALIGINI ICERDIGI YAZSIN.
 7. GECMISI ANLIK NASIL BROWSE EDERIZ ONA BAK.
 8. BU BRANCH ADI `BU BRANCH` DIGERLERIYLA KARISTIRMA.
+9. online offline bildirimleri logging
+10. charts after that
+11. demo with +laptop or vm evden laptop getir
