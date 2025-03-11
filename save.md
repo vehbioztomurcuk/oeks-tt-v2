@@ -22,3 +22,4 @@ VIDEO OK.
 9. online offline bildirimleri logging
 10. charts after that
 11. demo with +laptop or vm evden laptop getir
+12. Lokal ipyi source sunucuda sabitle ONEMLI
