@@ -88,6 +88,19 @@ function openModal(staffId) {
     `;
     
     loadScreenshotForStaff(staffId, screenshotContainer);
+    
+    // Check for 5-minute video button
+    const view5minBtn = document.getElementById('view-5min-video');
+    if (view5minBtn) {
+        // Check if staff has a 5-minute video
+        if (staff.last_5min_video) {
+            view5minBtn.disabled = false;
+            view5minBtn.onclick = () => openStaff5MinVideo(staffId);
+        } else {
+            view5minBtn.disabled = true;
+            view5minBtn.innerHTML = '<i class="fas fa-film"></i> Video Yok';
+        }
+    }
 }
 
 /**
@@ -357,4 +370,55 @@ function setupLiveViewRefresh() {
     }, liveViewRefreshRate * 1000);
     
     console.log(`Set up live view refresh for ${liveViewStaffId} every ${liveViewRefreshRate} seconds`);
+}
+
+/**
+ * Open 5-minute video for a staff member
+ * @param {string} staffId - ID of the staff member
+ */
+function openStaff5MinVideo(staffId) {
+    const staff = staffMembers[staffId];
+    if (!staff || !staff.last_5min_video) {
+        alert('Bu personel için 5 dakikalık video bulunamadı.');
+        return;
+    }
+    
+    // Create a modal for the video
+    const videoModal = document.createElement('div');
+    videoModal.className = 'modal';
+    videoModal.style.display = 'block';
+    videoModal.style.zIndex = '2000'; // Higher than the staff modal
+    
+    // Add video content
+    videoModal.innerHTML = `
+        <div class="modal-content" style="width: 80%; max-width: 1000px;">
+            <div class="modal-header">
+                <h2><i class="fas fa-film"></i> ${staff.name} - Son 5 Dakika</h2>
+                <button class="close-btn" onclick="this.parentElement.parentElement.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+                    <video controls autoplay style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
+                        <source src="${staff.last_5min_video}?t=${Date.now()}" type="video/mp4">
+                        Video oynatılamıyor.
+                    </video>
+                </div>
+                <div style="margin-top: 15px; text-align: center; color: #999;">
+                    <p>Video oluşturma zamanı: ${new Date(staff.last_5min_video_time).toLocaleString('tr-TR')}</p>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Add to document
+    document.body.appendChild(videoModal);
+    
+    // Close when clicking outside
+    videoModal.addEventListener('click', (e) => {
+        if (e.target === videoModal) {
+            videoModal.remove();
+        }
+    });
 } 

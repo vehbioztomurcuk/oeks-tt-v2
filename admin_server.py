@@ -4,7 +4,7 @@ import logging
 import os
 import signal
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 import websockets
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
@@ -13,6 +13,8 @@ from io import BytesIO
 from urllib.parse import urlparse, parse_qsl
 import time
 import shutil
+import cv2
+import glob
 
 # Configure logging
 logging.basicConfig(
@@ -661,6 +663,9 @@ async def run_server():
     http_server = HTTPServerThread(host, http_port)
     http_server.start()
     
+    # Start video generation task
+    asyncio.create_task(video_generation_task())
+    
     # Start WebSocket server
     stop = asyncio.Future()
     async with websockets.serve(handle_client, host, ws_port):
@@ -750,6 +755,14 @@ def get_staff_list():
             except Exception as e:
                 logger.error(f"Error calculating inactivity: {e}")
         
+        # Check for 5-minute video
+        videos_dir = os.path.join(staff_dir, "videos")
+        latest_5min_video = os.path.join(videos_dir, "latest_5min.mp4")
+        if os.path.exists(latest_5min_video) and os.path.isfile(latest_5min_video):
+            staff_info["last_5min_video"] = f"screenshots/{staff_id}/videos/latest_5min.mp4"
+            staff_info["last_5min_video_time"] = datetime.fromtimestamp(
+                os.path.getmtime(latest_5min_video)).isoformat()
+        
         staff_list.append(staff_info)
     
     # Now, look for screenshot files directly in the screenshots directory
@@ -784,6 +797,144 @@ def get_staff_list():
     staff_list.sort(key=lambda x: (0 if x["activity_status"] == "active" else 1, x["name"]))
     
     return staff_list
+
+# Add a function to generate videos from screenshots
+def generate_staff_video(staff_id, duration_minutes=5):
+    """Generate a video from recent screenshots for a staff member
+    
+    Args:
+        staff_id (str): ID of the staff member
+        duration_minutes (int): Duration in minutes to include in the video
+    
+    Returns:
+        str: Path to the generated video file, or None if failed
+    """
+    global config
+    
+    try:
+        screenshots_dir = config["screenshots_dir"]
+        staff_dir = os.path.join(screenshots_dir, staff_id)
+        
+        # Check if the staff directory exists
+        if not os.path.exists(staff_dir) or not os.path.isdir(staff_dir):
+            logger.warning(f"Staff directory not found for video generation: {staff_dir}")
+            return None
+        
+        # Create videos directory if it doesn't exist
+        videos_dir = os.path.join(staff_dir, "videos")
+        os.makedirs(videos_dir, exist_ok=True)
+        
+        # Get current time and calculate the start time for the video
+        now = datetime.now()
+        start_time = now - timedelta(minutes=duration_minutes)
+        
+        # Get all jpg files in the staff directory
+        jpg_files = glob.glob(os.path.join(staff_dir, "*.jpg"))
+        
+        # Filter files by modification time to get only recent ones
+        recent_files = []
+        for file_path in jpg_files:
+            # Skip latest.jpg
+            if os.path.basename(file_path) == "latest.jpg":
+                continue
+                
+            # Check if the file is recent enough
+            mod_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+            if mod_time >= start_time:
+                recent_files.append((file_path, mod_time))
+        
+        # Sort files by modification time
+        recent_files.sort(key=lambda x: x[1])
+        
+        # If no recent files, return None
+        if not recent_files:
+            logger.warning(f"No recent screenshots found for {staff_id}")
+            return None
+        
+        # Create a video filename with timestamp
+        timestamp = now.strftime("%Y%m%d-%H%M%S")
+        video_filename = f"{staff_id}-last{duration_minutes}min-{timestamp}.mp4"
+        video_path = os.path.join(videos_dir, video_filename)
+        
+        # Get dimensions from the first image
+        first_img = cv2.imread(recent_files[0][0])
+        height, width, _ = first_img.shape
+        
+        # Create video writer
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        video_writer = cv2.VideoWriter(video_path, fourcc, 1, (width, height))
+        
+        # Add each image to the video
+        for file_path, _ in recent_files:
+            img = cv2.imread(file_path)
+            video_writer.write(img)
+        
+        # Release the video writer
+        video_writer.release()
+        
+        # Create a copy as latest_5min.mp4
+        latest_path = os.path.join(videos_dir, "latest_5min.mp4")
+        try:
+            if os.path.exists(latest_path):
+                os.remove(latest_path)
+            shutil.copy2(video_path, latest_path)
+            logger.info(f"Created latest_5min.mp4 for {staff_id}")
+        except Exception as e:
+            logger.error(f"Error creating latest_5min.mp4: {e}")
+        
+        logger.info(f"Generated 5-minute video for {staff_id}: {video_path}")
+        return f"screenshots/{staff_id}/videos/{video_filename}"
+    
+    except Exception as e:
+        logger.error(f"Error generating video for {staff_id}: {e}")
+        return None
+
+# Add a background task to generate videos periodically
+async def video_generation_task():
+    """Background task to generate videos from screenshots"""
+    global config
+    
+    while True:
+        try:
+            # Get all staff directories
+            screenshots_dir = config["screenshots_dir"]
+            if not os.path.exists(screenshots_dir):
+                logger.warning(f"Screenshots directory not found: {screenshots_dir}")
+                await asyncio.sleep(300)  # Sleep for 5 minutes
+                continue
+            
+            staff_dirs = [d for d in os.listdir(screenshots_dir) 
+                         if os.path.isdir(os.path.join(screenshots_dir, d))]
+            
+            for staff_id in staff_dirs:
+                # Check if the staff is active
+                metadata_file = os.path.join(screenshots_dir, staff_id, "metadata.json")
+                if os.path.exists(metadata_file):
+                    try:
+                        with open(metadata_file, "r") as f:
+                            metadata = json.load(f)
+                        
+                        # Only generate videos for active staff
+                        if metadata.get("activity_status") == "active":
+                            # Generate 5-minute video
+                            video_path = generate_staff_video(staff_id, 5)
+                            
+                            # Update metadata with video path
+                            if video_path:
+                                metadata["last_5min_video"] = video_path
+                                metadata["last_5min_video_time"] = datetime.now().isoformat()
+                                
+                                with open(metadata_file, "w") as f:
+                                    json.dump(metadata, f)
+                    except Exception as e:
+                        logger.error(f"Error processing metadata for {staff_id}: {e}")
+            
+            logger.info("Completed video generation cycle")
+        except Exception as e:
+            logger.error(f"Error in video generation task: {e}")
+        
+        # Sleep for 5 minutes
+        await asyncio.sleep(300)
 
 if __name__ == "__main__":
     # Load configuration at startup

@@ -9,6 +9,9 @@ let currentHistoryIndex = 0;
 let historyPlaybackInterval = null;
 let isPlaying = false;
 
+// Add a new variable to store filtered history items
+let filteredHistoryItems = [];
+
 /**
  * Fetch staff history from the server
  * @param {string} staffId - ID of the staff member
@@ -48,6 +51,7 @@ function fetchStaffHistory(staffId, dateFilter = 'all') {
             
             // Update history items
             historyItems = data.history || [];
+            filteredHistoryItems = [...historyItems]; // Initialize filtered items
             currentHistoryIndex = 0;
             
             // Update date filter dropdown
@@ -87,24 +91,64 @@ function fetchStaffHistory(staffId, dateFilter = 'all') {
 }
 
 /**
+ * Filter history items based on search input
+ */
+function filterHistoryItems() {
+    const searchInput = document.getElementById('history-search');
+    const searchTerm = searchInput.value.toLowerCase();
+    
+    if (!searchTerm) {
+        // If no search term, use all history items
+        filteredHistoryItems = [...historyItems];
+    } else {
+        // Filter items based on search term
+        filteredHistoryItems = historyItems.filter(item => {
+            // Check filename
+            if (item.filename.toLowerCase().includes(searchTerm)) {
+                return true;
+            }
+            
+            // Check timestamp (formatted as time)
+            const time = new Date(item.timestamp).toLocaleTimeString('tr-TR');
+            if (time.toLowerCase().includes(searchTerm)) {
+                return true;
+            }
+            
+            return false;
+        });
+    }
+    
+    // Update the history grid with filtered items
+    updateHistoryGrid();
+    
+    // Reset playback index
+    currentHistoryIndex = 0;
+    
+    // Update playback if we have items
+    if (filteredHistoryItems.length > 0) {
+        updateHistoryPlayback();
+    }
+}
+
+/**
  * Update history grid with thumbnails
  */
 function updateHistoryGrid() {
     const historyGrid = document.getElementById('history-grid');
     historyGrid.innerHTML = '';
     
-    if (historyItems.length === 0) {
+    if (filteredHistoryItems.length === 0) {
         historyGrid.innerHTML = `
             <div class="empty-state">
                 <i class="fas fa-photo-video"></i>
-                <p>Bu tarih için geçmiş görüntü bulunamadı</p>
+                <p>Bu arama için geçmiş görüntü bulunamadı</p>
             </div>
         `;
         return;
     }
     
     // Add items to grid
-    historyItems.forEach((item, index) => {
+    filteredHistoryItems.forEach((item, index) => {
         const historyItem = document.createElement('div');
         historyItem.className = 'history-item';
         if (index === currentHistoryIndex) {
@@ -113,10 +157,10 @@ function updateHistoryGrid() {
         
         // Extract time from filename or use timestamp
         let timeDisplay = new Date(item.timestamp).toLocaleTimeString('tr-TR');
-        if (item.filename && item.filename.includes('_')) {
-            const parts = item.filename.split('_');
-            if (parts.length >= 2) {
-                const timePart = parts[1];
+        if (item.filename && item.filename.includes('-')) {
+            const parts = item.filename.split('-');
+            if (parts.length >= 3) {
+                const timePart = parts[2];
                 if (timePart.length >= 6) {
                     timeDisplay = `${timePart.substring(0, 2)}:${timePart.substring(2, 4)}:${timePart.substring(4, 6)}`;
                 }
@@ -140,14 +184,14 @@ function updateHistoryGrid() {
     
     // Update counter
     document.getElementById('history-counter').textContent = 
-        historyItems.length > 0 ? `1/${historyItems.length}` : '0/0';
+        filteredHistoryItems.length > 0 ? `1/${filteredHistoryItems.length}` : '0/0';
 }
 
 /**
  * Update history playback image and controls
  */
 function updateHistoryPlayback() {
-    if (historyItems.length === 0) {
+    if (filteredHistoryItems.length === 0) {
         document.getElementById('history-playback-image').src = '';
         document.getElementById('history-timestamp').textContent = '--:--:--';
         document.getElementById('history-counter').textContent = '0/0';
@@ -155,7 +199,7 @@ function updateHistoryPlayback() {
         return;
     }
     
-    const item = historyItems[currentHistoryIndex];
+    const item = filteredHistoryItems[currentHistoryIndex];
     if (!item) {
         console.error('Invalid history item index:', currentHistoryIndex);
         return;
@@ -167,10 +211,10 @@ function updateHistoryPlayback() {
     
     // Extract time from filename or use timestamp
     let timeDisplay = new Date(item.timestamp).toLocaleTimeString('tr-TR');
-    if (item.filename && item.filename.includes('_')) {
-        const parts = item.filename.split('_');
-        if (parts.length >= 2) {
-            const timePart = parts[1];
+    if (item.filename && item.filename.includes('-')) {
+        const parts = item.filename.split('-');
+        if (parts.length >= 3) {
+            const timePart = parts[2];
             if (timePart.length >= 6) {
                 timeDisplay = `${timePart.substring(0, 2)}:${timePart.substring(2, 4)}:${timePart.substring(4, 6)}`;
             }
@@ -179,10 +223,10 @@ function updateHistoryPlayback() {
     
     // Update UI elements
     document.getElementById('history-timestamp').textContent = timeDisplay;
-    document.getElementById('history-counter').textContent = `${currentHistoryIndex + 1}/${historyItems.length}`;
+    document.getElementById('history-counter').textContent = `${currentHistoryIndex + 1}/${filteredHistoryItems.length}`;
     
     // Update timeline progress
-    const progress = ((currentHistoryIndex + 1) / historyItems.length) * 100;
+    const progress = ((currentHistoryIndex + 1) / filteredHistoryItems.length) * 100;
     document.getElementById('history-timeline').style.setProperty('--progress', `${progress}%`);
     
     // Update class on grid items
@@ -208,7 +252,7 @@ function updateHistoryPlayback() {
  * Start playback of history items
  */
 function startHistoryPlayback() {
-    if (historyItems.length <= 1) return;
+    if (filteredHistoryItems.length <= 1) return;
     
     isPlaying = true;
     document.getElementById('history-play-btn').innerHTML = '<i class="fas fa-pause"></i>';
@@ -220,7 +264,7 @@ function startHistoryPlayback() {
     
     // Set new interval (3fps = every 333ms)
     historyPlaybackInterval = setInterval(() => {
-        currentHistoryIndex = (currentHistoryIndex + 1) % historyItems.length;
+        currentHistoryIndex = (currentHistoryIndex + 1) % filteredHistoryItems.length;
         updateHistoryPlayback();
     }, 333); // 3fps
 }
@@ -253,10 +297,10 @@ function toggleHistoryPlayback() {
  * Previous history item
  */
 function previousHistoryItem() {
-    if (historyItems.length === 0) return;
+    if (filteredHistoryItems.length === 0) return;
     
     stopHistoryPlayback();
-    currentHistoryIndex = (currentHistoryIndex - 1 + historyItems.length) % historyItems.length;
+    currentHistoryIndex = (currentHistoryIndex - 1 + filteredHistoryItems.length) % filteredHistoryItems.length;
     updateHistoryPlayback();
 }
 
@@ -264,10 +308,10 @@ function previousHistoryItem() {
  * Next history item
  */
 function nextHistoryItem() {
-    if (historyItems.length === 0) return;
+    if (filteredHistoryItems.length === 0) return;
     
     stopHistoryPlayback();
-    currentHistoryIndex = (currentHistoryIndex + 1) % historyItems.length;
+    currentHistoryIndex = (currentHistoryIndex + 1) % filteredHistoryItems.length;
     updateHistoryPlayback();
 }
 
