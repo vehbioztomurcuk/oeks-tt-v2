@@ -429,6 +429,117 @@ button:hover {
     gap: 10px;
 }
 
+/* Tab navigation */
+.history-tabs {
+    display: flex;
+    border-bottom: 1px solid #444;
+    margin-bottom: 15px;
+}
+
+.history-tab-btn {
+    background: none;
+    border: none;
+    padding: 10px 15px;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 14px;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.history-tab-btn:hover {
+    color: #fff;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.history-tab-btn.active {
+    color: #3498db;
+    border-bottom: 2px solid #3498db;
+}
+
+.history-tab-content {
+    display: none;
+}
+
+.history-tab-content.active {
+    display: block;
+}
+
+/* Video history grid */
+.video-history-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.video-item {
+    background-color: #2c3e50;
+    border-radius: 5px;
+    overflow: hidden;
+    transition: transform 0.2s;
+}
+
+.video-item:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.video-item-thumbnail {
+    height: 120px;
+    background-color: #1a2533;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.video-item-thumbnail i {
+    font-size: 40px;
+    color: #3498db;
+}
+
+.video-duration {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.video-item-info {
+    padding: 10px;
+}
+
+.video-item-title {
+    font-size: 13px;
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.video-play-btn {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    width: 100%;
+    transition: background-color 0.2s;
+}
+
+.video-play-btn:hover {
+    background-color: #2980b9;
+}
+
 .history-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));

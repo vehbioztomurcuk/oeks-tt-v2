@@ -327,6 +327,30 @@ class HTTPHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(history_data).encode())
         
+        elif path.startswith("/api/staff-videos/"):
+            # Extract staff_id from path: /api/staff-videos/{staff_id}
+            staff_id = path.split("/api/staff-videos/")[1]
+            # Remove any additional path segments if present
+            if '/' in staff_id:
+                staff_id = staff_id.split('/')[0]
+            
+            # Parse query parameters
+            query = urlparse(self.path).query
+            params = dict(parse_qsl(query))
+            
+            # Extract date filter parameter
+            date_filter = params.get("date", "all")
+            
+            # Get video history for the staff member
+            logger.info(f"Fetching video history for staff ID: {staff_id}, date filter: {date_filter}")
+            video_data = self.get_staff_videos(staff_id, date_filter)
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(video_data).encode())
+        
         else:
             # Unknown API endpoint
             logger.warning(f"Unknown API endpoint requested: {path}")
@@ -464,6 +488,89 @@ class HTTPHandler(BaseHTTPRequestHandler):
         history_data["availableDates"] = sorted(list(all_dates), reverse=True)
         
         return history_data
+
+    def get_staff_videos(self, staff_id, date_filter=None):
+        """Get video history data for a staff member
+        
+        Args:
+            staff_id (str): ID of the staff member
+            date_filter (str, optional): Date filter in YYYYMMDD format
+        
+        Returns:
+            dict: Video history data for the staff member
+        """
+        global config
+        
+        video_data = {
+            "staffId": staff_id,
+            "videos": [],
+            "availableDates": []
+        }
+        
+        screenshots_dir = config["screenshots_dir"]
+        staff_dir = os.path.join(screenshots_dir, staff_id)
+        videos_dir = os.path.join(staff_dir, "videos")
+        
+        # Check if the videos directory exists
+        if not os.path.exists(videos_dir) or not os.path.isdir(videos_dir):
+            logger.warning(f"Videos directory not found: {videos_dir}")
+            return video_data
+        
+        # Get video files
+        video_files = [f for f in os.listdir(videos_dir) if f.endswith('.mp4') and f != 'latest_5min.mp4']
+        
+        # Get available dates from filenames
+        all_dates = set()
+        date_filtered_files = []
+        
+        for file in video_files:
+            # Extract date from filename if possible
+            try:
+                # Assuming filename format is staff_id-last5min-YYYYMMDD-HHMMSS.mp4
+                date_part = file.split('-')
+                if len(date_part) >= 3:
+                    # Extract date (YYYYMMDD)
+                    date_str = date_part[2]
+                    all_dates.add(date_str)
+                    
+                    # Apply date filter if provided
+                    if date_filter and date_filter != 'all':
+                        if date_str == date_filter:
+                            date_filtered_files.append(file)
+                    else:
+                        date_filtered_files.append(file)
+            except Exception as e:
+                logger.warning(f"Error parsing date from video filename {file}: {e}")
+                date_filtered_files.append(file)  # Include files with unparseable dates
+        
+        # If date filter was applied, use filtered files, otherwise use all files
+        files_to_process = date_filtered_files if date_filter else video_files
+        
+        # Sort by modification time (newest first)
+        files_to_process.sort(key=lambda x: os.path.getmtime(os.path.join(videos_dir, x)), reverse=True)
+        
+        # Build video items
+        video_items = []
+        for file in files_to_process:
+            file_path = os.path.join(videos_dir, file)
+            timestamp = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
+            
+            # Extract duration from filename if possible
+            duration = "5 dakika"  # Default
+            if "last5min" in file:
+                duration = "5 dakika"
+            
+            video_items.append({
+                "filename": file,
+                "path": f"screenshots/{staff_id}/videos/{file}",
+                "timestamp": timestamp,
+                "duration": duration
+            })
+        
+        video_data["videos"] = video_items
+        video_data["availableDates"] = sorted(list(all_dates), reverse=True)
+        
+        return video_data
 
 # WebSocket server handler
 async def handle_client(websocket):

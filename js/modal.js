@@ -56,6 +56,20 @@ function openModal(staffId) {
     // Load screenshot history for this staff member
     fetchStaffHistory(staffId);
     
+    // Reset tab state
+    const tabButtons = document.querySelectorAll('.history-tab-btn');
+    const tabContents = document.querySelectorAll('.history-tab-content');
+    
+    tabButtons.forEach(btn => btn.classList.remove('active'));
+    tabContents.forEach(content => content.classList.remove('active'));
+    
+    // Set screenshots tab as active
+    const screenshotsTabBtn = document.querySelector('.history-tab-btn[data-tab="screenshots"]');
+    if (screenshotsTabBtn) screenshotsTabBtn.classList.add('active');
+    
+    const screenshotsTab = document.getElementById('screenshots-tab');
+    if (screenshotsTab) screenshotsTab.classList.add('active');
+    
     // Show modal immediately
     document.getElementById('live-view-modal').style.display = 'block';
     

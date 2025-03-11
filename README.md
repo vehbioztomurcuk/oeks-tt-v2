@@ -260,3 +260,26 @@ oeks-tt-v2
 └─ staff_app.py
 
 ```
+```
+oeks-tt-v2
+├─ admin_config.json
+├─ admin_server.py
+├─ cleanup_script.py
+├─ config.json
+├─ css
+│  └─ styles.css
+├─ index.html
+├─ js
+│  ├─ dashboard.js
+│  ├─ history.js
+│  ├─ modal.js
+│  ├─ script.js
+│  ├─ utils.js
+│  └─ video-history.js
+├─ README-TR.md
+├─ README.md
+├─ requirements.txt
+├─ save.md
+└─ staff_app.py
+
+```

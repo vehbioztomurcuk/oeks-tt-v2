@@ -165,41 +165,73 @@
                     </div>
                     
                     <div class="history-section">
-                        <h3><i class="fas fa-history"></i> Son Görüntüler</h3>
-                        
-                        <div class="history-controls">
-                            <div class="form-group">
-                                <label for="history-date-filter">Tarih:</label>
-                                <select id="history-date-filter">
-                                    <option value="all">Tümü</option>
-                                    <!-- Will be populated with available dates -->
-                                </select>
+                        <div class="history-tabs">
+                            <button class="history-tab-btn active" data-tab="screenshots">
+                                <i class="fas fa-image"></i> Ekran Görüntüleri
+                            </button>
+                            <button class="history-tab-btn" data-tab="videos">
+                                <i class="fas fa-film"></i> Videolar
+                            </button>
+                        </div>
+
+                        <div class="history-tab-content active" id="screenshots-tab">
+                            <h3><i class="fas fa-history"></i> Son Görüntüler</h3>
+                            
+                            <div class="history-controls">
+                                <div class="form-group">
+                                    <label for="history-date-filter">Tarih:</label>
+                                    <select id="history-date-filter">
+                                        <option value="all">Tümü</option>
+                                        <!-- Will be populated with available dates -->
+                                    </select>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="history-search">Ara:</label>
+                                    <input type="text" id="history-search" placeholder="Saat veya dosya adı...">
+                                </div>
+                                
+                                <div class="history-playback-controls">
+                                    <button id="history-play-btn" title="Oynat/Duraklat"><i class="fas fa-play"></i></button>
+                                    <button id="history-prev-btn" title="Önceki"><i class="fas fa-step-backward"></i></button>
+                                    <button id="history-next-btn" title="Sonraki"><i class="fas fa-step-forward"></i></button>
+                                    <span id="history-counter">0/0</span>
+                                </div>
                             </div>
                             
-                            <div class="form-group">
-                                <label for="history-search">Ara:</label>
-                                <input type="text" id="history-search" placeholder="Saat veya dosya adı...">
+                            <div class="history-playback-container">
+                                <img id="history-playback-image" src="" alt="Geçmiş görüntü" />
+                                <div id="history-timeline"></div>
+                                <div id="history-timestamp">--:--:--</div>
                             </div>
                             
-                            <div class="history-playback-controls">
-                                <button id="history-play-btn" title="Oynat/Duraklat"><i class="fas fa-play"></i></button>
-                                <button id="history-prev-btn" title="Önceki"><i class="fas fa-step-backward"></i></button>
-                                <button id="history-next-btn" title="Sonraki"><i class="fas fa-step-forward"></i></button>
-                                <span id="history-counter">0/0</span>
+                            <div id="history-grid" class="history-grid">
+                                <!-- Will be populated with recent screenshots -->
+                                <div class="empty-state">
+                                    <i class="fas fa-spinner refresh-animation"></i>
+                                    <p>Geçmiş yükleniyor...</p>
+                                </div>
                             </div>
                         </div>
-                        
-                        <div class="history-playback-container">
-                            <img id="history-playback-image" src="" alt="Geçmiş görüntü" />
-                            <div id="history-timeline"></div>
-                            <div id="history-timestamp">--:--:--</div>
-                        </div>
-                        
-                        <div id="history-grid" class="history-grid">
-                            <!-- Will be populated with recent screenshots -->
-                            <div class="empty-state">
-                                <i class="fas fa-spinner refresh-animation"></i>
-                                <p>Geçmiş yükleniyor...</p>
+
+                        <div class="history-tab-content" id="videos-tab">
+                            <h3><i class="fas fa-film"></i> Video Geçmişi</h3>
+                            
+                            <div class="video-history-controls">
+                                <div class="form-group">
+                                    <label for="video-date-filter">Tarih:</label>
+                                    <select id="video-date-filter">
+                                        <option value="all">Tümü</option>
+                                        <!-- Will be populated with available dates -->
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div id="video-history-grid" class="video-history-grid">
+                                <div class="empty-state">
+                                    <i class="fas fa-spinner refresh-animation"></i>
+                                    <p>Video geçmişi yükleniyor...</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -213,6 +245,7 @@
     <script src="js/dashboard.js"></script>
     <script src="js/modal.js"></script>
     <script src="js/history.js"></script>
+    <script src="js/video-history.js"></script>
     <script src="js/script.js"></script>
 </body>
 </html>

@@ -24,6 +24,9 @@ function initializeApp() {
     // Initialize history controls
     initializeHistoryControls();
     
+    // Initialize video history controls
+    initializeVideoHistoryControls();
+    
     // Connect to WebSocket
     const socket = connectWebSocket();
     
@@ -31,3 +34,4 @@ function initializeApp() {
     setupRefresh();
     fetchStaffData();
 } 
+
