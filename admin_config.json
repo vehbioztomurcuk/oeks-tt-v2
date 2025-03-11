@@ -4,13 +4,7 @@
     "ws_port": 8765,
     "http_port": 8080,
     "screenshots_dir": "screenshots",
-    "videos_dir": "videos",
     "retention_days": 30,
-    "video_settings": {
-        "max_file_size_mb": 500,
-        "cleanup_interval_hours": 24,
-        "stream_chunk_size": 1048576
-    },
     "allowed_ips": [],
     "debug_mode": false
 } 

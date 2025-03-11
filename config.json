@@ -1,17 +1,9 @@
 {
-    "admin_ws_url": "ws://192.168.1.183:8765",
+    "admin_ws_url": "ws://192.168.1.177:8765",
     "api_key": "oeks_secret_key_2024",
-    "staff_id": "staff_pc_141",
-    "name": "Vehbi OZTOMURCUK",
-    "division": "Marketing",
-    "screenshot_interval": 1,
-    "jpeg_quality": 30,
-    "video_settings": {
-        "fps": 1,
-        "resolution": {
-            "width": 1280,
-            "height": 720
-        },
-        "quality": 23
-    }
+    "staff_id": "staff_pc_test",
+    "name": "Test User",
+    "division": "Testing",
+    "screenshot_interval": 3,
+    "jpeg_quality": 30
 } 

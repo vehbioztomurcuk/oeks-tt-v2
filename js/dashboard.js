@@ -303,13 +303,13 @@ function updateDashboard(data) {
             activeStaff++;
         }
         
-        // Determine if the video path is valid
-        const hasValidVideo = staffInfo.video_path && 
-                             staffInfo.video_path !== "null" && 
-                             staffInfo.video_path !== null && 
-                             !staffInfo.video_path.includes("/null");
+        // Determine if the screenshot path is valid
+        const hasValidScreenshot = staffInfo.screenshot_path && 
+                             staffInfo.screenshot_path !== "null" && 
+                             staffInfo.screenshot_path !== null && 
+                             !staffInfo.screenshot_path.includes("/null");
         
-        console.log(`Staff ${staffId} video path: ${staffInfo.video_path}, valid: ${hasValidVideo}`);
+        console.log(`Staff ${staffId} screenshot path: ${staffInfo.screenshot_path}, valid: ${hasValidScreenshot}`);
         
         // Create card HTML
         let cardHTML = `
@@ -321,14 +321,14 @@ function updateDashboard(data) {
                     </span>
                     <span class="staff-division">${staffInfo.division}</span>
                 </div>
-                <div class="video-container" onclick="openModal('${staffId}')">
+                <div class="screenshot-container" onclick="openModal('${staffId}')">
         `;
         
-        // Add video or placeholder based on video path
-        if (hasValidVideo) {
-            // Get a clean path and timestamp for cache busting - use more aggressive timestamp
+        // Add screenshot or placeholder based on screenshot path
+        if (hasValidScreenshot) {
+            // Get a clean path and timestamp for cache busting
             const timestamp = Date.now();
-            let cleanPath = staffInfo.video_path;
+            let cleanPath = staffInfo.screenshot_path;
             
             // Remove any existing query parameters for clean URL generation
             if (cleanPath.includes('?')) {
@@ -336,67 +336,32 @@ function updateDashboard(data) {
             }
             
             // Add timestamp to prevent browser caching
-            const videoPath = `${cleanPath}?t=${timestamp}`;
+            const screenshotPath = `${cleanPath}?t=${timestamp}`;
             
-            // For staff_pc_141, always try to load latest.mp4 directly
-            if (staffId === 'staff_pc_141') {
-                const directLatestPath = `videos/${staffId}/latest.mp4?t=${timestamp}`;
-                console.log(`Trying direct latest.mp4 path for ${staffId}: ${directLatestPath}`);
-                
-                cardHTML += `
-                    <video autoplay muted loop playsinline>
-                        <source src="${directLatestPath}" type="video/mp4">
-                    </video>
-                    <div class="overlay">
-                        <i class="fas fa-search-plus"></i>
-                    </div>
-                `;
-            } else {
-                cardHTML += `
-                    <video autoplay muted loop playsinline>
-                        <source src="${videoPath}" type="video/mp4">
-                    </video>
-                    <div class="overlay">
-                        <i class="fas fa-search-plus"></i>
-                    </div>
-                `;
-            }
+            cardHTML += `
+                <img class="staff-screenshot" src="${screenshotPath}" alt="${staffInfo.name} ekranı">
+                <div class="overlay">
+                    <i class="fas fa-search-plus"></i>
+                </div>
+            `;
         } else {
-            // If this is staff_pc_141, create a more specific placeholder
-            if (staffId === 'staff_pc_141') {
-                console.log("Creating test video for staff_pc_141");
-                cardHTML += `
-                    <div class="placeholder-video" style="background-color: #333;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; text-align: center;">
-                            <i class="fas fa-video-slash" style="font-size: 2rem;"></i>
-                            <p>Video yok</p>
-                            <p>Kayıt durumunda ama video bulunamadı</p>
-                            <p>${new Date(staffInfo.timestamp).toLocaleTimeString('tr-TR')}</p>
-                        </div>
+            // Show placeholder
+            cardHTML += `
+                <div class="placeholder-screenshot">
+                    <div class="no-screenshot-message">
+                        <i class="fas fa-image-slash"></i>
+                        <p>Görüntü yok</p>
+                        <p>İzleme Durumu: ${staffInfo.recording_status}</p>
+                        <p>${new Date(staffInfo.timestamp).toLocaleTimeString('tr-TR')}</p>
                     </div>
-                    <div class="overlay">
-                        <i class="fas fa-search-plus"></i>
-                    </div>
-                `;
-            } else {
-                // For other staff members, just show the placeholder
-                cardHTML += `
-                    <div class="placeholder-video">
-                        <div class="no-video-message">
-                            <i class="fas fa-video-slash"></i>
-                            <p>Video yok</p>
-                            <p>İzleme Durumu: ${staffInfo.recording_status}</p>
-                            <p>${new Date(staffInfo.timestamp).toLocaleTimeString('tr-TR')}</p>
-                        </div>
-                    </div>
-                    <div class="overlay">
-                        <i class="fas fa-search-plus"></i>
-                    </div>
-                `;
-            }
+                </div>
+                <div class="overlay">
+                    <i class="fas fa-search-plus"></i>
+                </div>
+            `;
         }
         
-        // Close video container and card
+        // Close screenshot container and card
         cardHTML += `
                 </div>
                 <div class="staff-footer">
@@ -439,7 +404,7 @@ function updateStaffList() {
             const oldStaffMembers = {...staffMembers};
             updateDashboard(data);
             
-            // If we're in a modal view, update the detail page too, but NOT the video
+            // If we're in a modal view, update the detail page too, but NOT the screenshot
             if (liveViewStaffId && staffMembers[liveViewStaffId]) {
                 // Only update the metadata info
                 updateDetailInfo(liveViewStaffId);
