@@ -113,7 +113,7 @@
     <div id="live-view-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2><i class="fas fa-desktop"></i> <span id="modal-staff-name">Personel</span></h2>
+                <h2><i class="fas fa-desktop"></i> <span id="modal-staff-name" data-staff-id="">Personel</span></h2>
                 <div class="modal-header-controls">
                     <span class="status-indicator" id="modal-status-indicator"></span>
                     <button class="close-btn" id="close-modal"><i class="fas fa-times"></i></button>
@@ -121,10 +121,12 @@
             </div>
             <div class="modal-body">
                 <div class="live-view-container">
+                    <!-- Live screenshot at the top -->
                     <div class="modal-screenshot-container">
                         <img class="modal-screenshot" id="modal-screenshot" src="" alt="Personel ekranı" />
                     </div>
                     
+                    <!-- Staff details below the screenshot -->
                     <div class="staff-details">
                         <div class="detail-card">
                             <h3>Bilgiler</h3>
@@ -141,9 +143,10 @@
                         </div>
                     </div>
                     
+                    <!-- Timeline section -->
                     <div class="history-section">
                         <div class="history-header">
-                            <h3><i class="fas fa-history"></i> Geçmiş</h3>
+                            <h3><i class="fas fa-history"></i> Bugün Zaman Çizelgesi</h3>
                             <div class="history-date-filter">
                                 <label for="video-date-filter">Tarih:</label>
                                 <select id="video-date-filter">
@@ -156,13 +159,14 @@
                         <!-- Video Timeline Container -->
                         <div id="video-timeline-container" class="video-timeline-container">
                             <!-- Will be populated with timeline data -->
-                        </div>
-                        
-                        <div id="video-history-grid" class="video-history-grid">
                             <div class="empty-state">
                                 <i class="fas fa-spinner refresh-animation"></i>
-                                <p>Video geçmişi yükleniyor...</p>
+                                <p>Zaman çizelgesi yükleniyor...</p>
                             </div>
+                        </div>
+                        
+                        <!-- This will be hidden -->
+                        <div id="video-history-grid" class="video-history-grid" style="display: none;">
                         </div>
                     </div>
                 </div>

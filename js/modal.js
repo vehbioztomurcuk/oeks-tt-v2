@@ -17,90 +17,67 @@ let screenshotUpdateDebounceTimer = null;
  * @param {string} staffId - ID of the staff member
  */
 function openModal(staffId) {
-    const staff = staffMembers[staffId];
-    if (!staff) return;
-    
-    // Set the current staff ID for live view
-    liveViewStaffId = staffId;
-    
-    // Define liveViewRefreshInterval if it doesn't exist
-    if (typeof liveViewRefreshInterval === 'undefined') {
-        window.liveViewRefreshInterval = null;
-    }
-    
-    // Clear any existing refresh interval
-    if (liveViewRefreshInterval) {
-        clearInterval(liveViewRefreshInterval);
-        liveViewRefreshInterval = null;
-    }
-    
-    // Update modal content
-    document.getElementById('modal-staff-name').textContent = staff.name || "Bilinmeyen Kullanıcı";
-    document.getElementById('detail-division').textContent = staff.division || "Atanmamış";
-    
-    // Update status indicator
-    const statusIndicator = document.getElementById('modal-status-indicator');
-    if (statusIndicator) {
-        statusIndicator.className = 'status-indicator ' + 
-            (staff.recording_status === 'active' ? 'status-active' : 'status-inactive');
-    }
-    
-    // Update last activity time
+    const modal = document.getElementById('live-view-modal');
+    const modalStaffName = document.getElementById('modal-staff-name');
+    const modalScreenshot = document.getElementById('modal-screenshot');
+    const modalStatusIndicator = document.getElementById('modal-status-indicator');
+    const detailDivision = document.getElementById('detail-division');
     const detailLastTime = document.getElementById('detail-last-time');
-    if (detailLastTime) {
-        const now = new Date();
-        detailLastTime.textContent = `${formatTimeDiff(now, new Date(staff.timestamp))} önce`;
-    }
     
-    // Load video history for this staff member - default to today
-    fetchStaffVideoHistory(staffId, 'today');
+    // Reset modal content
+    modalScreenshot.src = '';
+    modalStaffName.textContent = 'Personel';
+    modalStaffName.setAttribute('data-staff-id', staffId);
+    detailDivision.textContent = '-';
+    detailLastTime.textContent = '-';
     
-    // Show modal immediately
-    document.getElementById('live-view-modal').style.display = 'block';
-    
-    // Set up a refresh interval for the screenshot (if active)
-    if (staff.recording_status === 'active') {
-        // Active staff - refresh every 3 seconds
-        liveViewRefreshInterval = setInterval(() => {
-            updateDetailInfo(staffId);
-            // Also refresh the screenshot if active
-            if (liveViewStaffId === staffId) {
-                updateLiveView(staffId);
+    // Get staff info
+    fetch(`/api/staff/${staffId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.name) {
+                modalStaffName.textContent = data.name;
+                
+                // Set status indicator
+                if (data.activity_status === 'active') {
+                    modalStatusIndicator.className = 'status-indicator status-active';
+                } else {
+                    modalStatusIndicator.className = 'status-indicator status-inactive';
+                }
+                
+                // Set details
+                if (data.division) {
+                    detailDivision.textContent = data.division;
+                }
+                
+                if (data.last_activity) {
+                    const lastActivity = new Date(data.last_activity);
+                    detailLastTime.textContent = formatDateTime(lastActivity);
+                }
+                
+                // Load screenshot
+                modalScreenshot.src = `/api/staff/${staffId}/screenshot?t=${Date.now()}`;
+                modalScreenshot.onload = function() {
+                    console.log('Screenshot loaded successfully');
+                };
+                modalScreenshot.onerror = function() {
+                    console.error('Failed to load screenshot');
+                    modalScreenshot.src = 'img/no-screenshot.png';
+                };
+                
+                // Load video history with 'today' as default
+                fetchStaffVideoHistory(staffId, 'today');
             }
-        }, 3000);
-    } else {
-        // Inactive staff - slower refresh just for info
-        liveViewRefreshInterval = setInterval(() => {
-            updateDetailInfo(staffId);
-        }, 10000);
-    }
+        })
+        .catch(error => {
+            console.error('Error fetching staff info:', error);
+        });
     
-    // Get the screenshot container
-    const screenshotContainer = document.querySelector('.modal-screenshot-container');
-    if (!screenshotContainer) return;
+    // Show modal
+    modal.style.display = 'block';
     
-    // Show loading state immediately
-    screenshotContainer.innerHTML = `
-        <div class="loading-indicator" style="position:absolute; top:0; left:0; right:0; bottom:0; display:flex; justify-content:center; align-items:center; background-color:#111;">
-            <i class="fas fa-spinner refresh-animation" style="font-size:2rem; color:#3498db;"></i>
-        </div>
-    `;
-    
-    loadScreenshotForStaff(staffId, screenshotContainer);
-    
-    // Check for 5-minute video button
-    const view5minBtn = document.getElementById('view-5min-video');
-    if (view5minBtn) {
-        // Check if staff has a 5-minute video
-        if (staff.last_5min_video) {
-            view5minBtn.disabled = false;
-            view5minBtn.innerHTML = '<i class="fas fa-film"></i> Son 5 Dakika';
-            view5minBtn.onclick = () => openStaff5MinVideo(staffId);
-        } else {
-            view5minBtn.disabled = true;
-            view5minBtn.innerHTML = '<i class="fas fa-film"></i> Video Yok';
-        }
-    }
+    // Set up auto-refresh for screenshot
+    startScreenshotRefresh(staffId);
 }
 
 /**

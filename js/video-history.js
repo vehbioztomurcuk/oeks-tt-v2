@@ -19,145 +19,68 @@ let currentDateFilter = 'all';
  * @returns {Promise} Promise that resolves with video history data
  */
 function fetchStaffVideoHistory(staffId, dateFilter = 'today') {
+    const timelineContainer = document.getElementById('video-timeline-container');
+    
     // Show loading state
+    timelineContainer.innerHTML = `
+        <div class="empty-state">
+            <i class="fas fa-spinner refresh-animation"></i>
+            <p>Video geçmişi yükleniyor...</p>
+        </div>
+    `;
+    
+    // Remove the video grid as we're eliminating it
     const videoGrid = document.getElementById('video-history-grid');
-    videoGrid.innerHTML = '<div class="empty-state"><i class="fas fa-spinner refresh-animation"></i><p>Video geçmişi yükleniyor...</p></div>';
+    if (videoGrid) {
+        videoGrid.innerHTML = '';
+        videoGrid.style.display = 'none'; // Hide the grid completely
+    }
     
-    // Reset video history state
-    videoHistoryItems = [];
-    filteredVideoItems = [];
-    hourlyVideoItems = [];
-    dailyVideoItems = [];
-    currentStaffId = staffId;
-    currentDateFilter = dateFilter;
+    // Format date for display
+    let displayDate = 'Bugün';
+    if (dateFilter !== 'today' && dateFilter !== 'all') {
+        const year = dateFilter.substring(0, 4);
+        const month = dateFilter.substring(4, 6);
+        const day = dateFilter.substring(6, 8);
+        displayDate = `${day}.${month}.${year}`;
+    }
     
-    console.log(`[DEBUG] Fetching video history for staff ${staffId} with date filter ${dateFilter}`);
+    // Update timeline header
+    const timelineHeader = document.querySelector('.history-header h3');
+    if (timelineHeader) {
+        timelineHeader.innerHTML = `<i class="fas fa-history"></i> ${displayDate} Zaman Çizelgesi`;
+    }
     
-    // If dateFilter is 'today', use 'all' for the API call to get today's videos
-    const apiDateFilter = dateFilter === 'today' ? 'all' : dateFilter;
-    
-    const url = apiDateFilter === 'all' 
-        ? `/api/staff-videos/${staffId}` 
-        : `/api/staff-videos/${staffId}?date=${apiDateFilter}`;
-    
-    return fetch(url)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Video history request failed');
-            }
-            return response.json();
-        })
+    // Fetch video history data
+    fetch(`/api/staff/${staffId}/videos?date=${dateFilter}`)
+        .then(response => response.json())
         .then(data => {
-            console.log("[DEBUG] Video history data received:", data);
+            console.log('Video history data:', data);
             
-            // Handle null response
-            if (!data) {
-                videoGrid.innerHTML = `
+            if (!data || (!data.videos && !data.hourlyVideos && !data.dailyVideos)) {
+                timelineContainer.innerHTML = `
                     <div class="empty-state">
-                        <i class="fas fa-film"></i>
-                        <p>Bu personel için video bulunamadı</p>
+                        <i class="fas fa-exclamation-circle"></i>
+                        <p>Bu tarih için video bulunamadı.</p>
                     </div>
                 `;
-                
-                // Update date filter dropdown with empty options
-                const dateFilter = document.getElementById('video-date-filter');
-                if (dateFilter) {
-                    dateFilter.innerHTML = '<option value="today">Bugün</option>';
-                }
-                
-                // Hide timeline
-                const timelineContainer = document.getElementById('video-timeline-container');
-                if (timelineContainer) {
-                    timelineContainer.innerHTML = `
-                        <div class="timeline-empty">
-                            <i class="fas fa-calendar-times"></i>
-                            <p>Bu personel için video kaydı bulunamadı</p>
-                        </div>
-                    `;
-                }
-                
                 return;
             }
             
-            // Update video history items
-            videoHistoryItems = data.videos || [];
-            hourlyVideoItems = data.hourlyVideos || [];
-            dailyVideoItems = data.dailyVideos || [];
-            filteredVideoItems = [...videoHistoryItems];
+            // Fetch and render the timeline
+            fetchVideoTimeline(staffId, dateFilter);
             
-            // Update date filter dropdown
-            const dateFilter = document.getElementById('video-date-filter');
-            if (dateFilter) {
-                // Get today's date in YYYYMMDD format
-                const today = new Date();
-                const todayStr = today.toISOString().split('T')[0].replace(/-/g, '');
-                
-                dateFilter.innerHTML = '<option value="today">Bugün</option>';
-                
-                // Add available dates to dropdown
-                (data.availableDates || []).forEach(date => {
-                    // Skip today's date if it's in the list
-                    if (date === todayStr) return;
-                    
-                    // Format date as DD.MM.YYYY for Turkish format
-                    const year = date.substring(0, 4);
-                    const month = date.substring(4, 6);
-                    const day = date.substring(6, 8);
-                    const formattedDate = `${day}.${month}.${year}`;
-                    
-                    const option = document.createElement('option');
-                    option.value = date;
-                    option.textContent = formattedDate;
-                    dateFilter.appendChild(option);
-                });
-                
-                // Set the selected value
-                if (currentDateFilter === 'today') {
-                    dateFilter.value = 'today';
-                } else {
-                    // If the current date filter exists in the options, select it
-                    const exists = Array.from(dateFilter.options).some(opt => opt.value === currentDateFilter);
-                    dateFilter.value = exists ? currentDateFilter : 'today';
-                }
-            }
-            
-            // Update video grid with chronological display
-            updateChronologicalVideoGrid();
-            
-            // Fetch timeline data for the selected date
-            if (currentDateFilter !== 'all' && currentDateFilter !== 'today') {
-                fetchVideoTimeline(staffId, currentDateFilter);
-            } else {
-                // For "today", get today's date in YYYYMMDD format
-                const today = new Date();
-                const todayStr = today.toISOString().split('T')[0].replace(/-/g, '');
-                fetchVideoTimeline(staffId, todayStr);
-            }
-            
-            return data;
+            // Update date filter dropdown with available dates
+            updateDateFilterDropdown(data.availableDates);
         })
         .catch(error => {
-            console.error('[DEBUG] Error fetching video history:', error);
-            videoGrid.innerHTML = `
+            console.error('Error fetching video history:', error);
+            timelineContainer.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <p>Video geçmişi yüklenirken hata oluştu</p>
-                    <p class="error-details">${error.message}</p>
+                    <p>Video geçmişi yüklenirken hata oluştu.</p>
                 </div>
             `;
-            
-            // Hide timeline or show error
-            const timelineContainer = document.getElementById('video-timeline-container');
-            if (timelineContainer) {
-                timelineContainer.innerHTML = `
-                    <div class="timeline-error">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <p>Zaman çizelgesi yüklenirken hata oluştu</p>
-                    </div>
-                `;
-            }
-            
-            throw error;
         });
 }
 
@@ -168,53 +91,30 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'today') {
  */
 function fetchVideoTimeline(staffId, date) {
     const timelineContainer = document.getElementById('video-timeline-container');
-    if (!timelineContainer) return;
     
-    // Show loading state
-    timelineContainer.innerHTML = '<div class="timeline-loading"><i class="fas fa-spinner refresh-animation"></i> Zaman çizelgesi yükleniyor...</div>';
-    timelineContainer.style.display = 'block';
-    
-    // Check if staffId is valid
-    if (!staffId || staffId === 'unknown') {
-        timelineContainer.innerHTML = `
-            <div class="timeline-error">
-                <i class="fas fa-exclamation-triangle"></i>
-                <p>Geçersiz personel kimliği</p>
-            </div>
-        `;
-        return;
-    }
-    
-    fetch(`/api/video-timeline/${staffId}?date=${date}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Timeline data request failed');
-            }
-            return response.json();
-        })
+    fetch(`/api/staff/${staffId}/timeline?date=${date}`)
+        .then(response => response.json())
         .then(data => {
-            console.log("Timeline data received:", data);
+            console.log('Timeline data:', data);
             
-            // Handle null or empty data
             if (!data || !data.segments || data.segments.length === 0) {
                 timelineContainer.innerHTML = `
-                    <div class="timeline-empty">
-                        <i class="fas fa-calendar-times"></i>
-                        <p>Bu tarih için video kaydı bulunamadı</p>
+                    <div class="empty-state">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <p>Bu tarih için zaman çizelgesi bulunamadı.</p>
                     </div>
                 `;
                 return;
             }
             
-            timelineData = data.segments || [];
-            renderVideoTimeline(data);
+            renderVideoTimeline(data.segments);
         })
         .catch(error => {
-            console.error('Error fetching timeline data:', error);
+            console.error('Error fetching video timeline:', error);
             timelineContainer.innerHTML = `
-                <div class="timeline-error">
+                <div class="empty-state">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <p>Zaman çizelgesi yüklenirken hata oluştu</p>
+                    <p>Zaman çizelgesi yüklenirken hata oluştu.</p>
                 </div>
             `;
         });
@@ -224,102 +124,121 @@ function fetchVideoTimeline(staffId, date) {
  * Render the video timeline
  * @param {Object} data - Timeline data
  */
-function renderVideoTimeline(data) {
+function renderVideoTimeline(segments) {
     const timelineContainer = document.getElementById('video-timeline-container');
-    if (!timelineContainer) return;
     
-    // Format date for display (Turkish format)
-    let dateDisplay = '';
-    try {
-        const year = data.date.substring(0, 4);
-        const month = data.date.substring(4, 6);
-        const day = data.date.substring(6, 8);
-        dateDisplay = `${day}.${month}.${year}`;
-    } catch (e) {
-        dateDisplay = data.date;
-    }
-    
-    // Create timeline header
-    let timelineHTML = `
-        <div class="timeline-header">
-            <h3><i class="fas fa-calendar-day"></i> ${dateDisplay} Zaman Çizelgesi</h3>
-        </div>
-        <div class="timeline-scroll-container">
-            <div class="timeline-hours">
-    `;
-    
-    // Create hour markers (using 24-hour format for Turkey)
-    for (let hour = 0; hour < 24; hour++) {
-        const hourStr = hour.toString().padStart(2, '0');
-        timelineHTML += `<div class="timeline-hour" data-hour="${hour}">
-            <div class="hour-label">${hourStr}:00</div>
-            <div class="hour-segments" id="hour-${hour}"></div>
-        </div>`;
-    }
-    
-    timelineHTML += `
-            </div>
-        </div>
-    `;
-    
-    timelineContainer.innerHTML = timelineHTML;
-    
-    // Add segments to the timeline
-    data.segments.forEach(segment => {
-        // For all video types, add to timeline
+    // Group segments by hour
+    const hourlySegments = {};
+    segments.forEach(segment => {
         const hour = segment.hour;
-        const hourContainer = document.getElementById(`hour-${hour}`);
-        
-        if (hourContainer) {
-            const segmentEl = document.createElement('div');
-            segmentEl.className = `timeline-segment ${segment.type}`;
-            
-            // Set tooltip with more detailed information
-            let tooltipText = '';
-            if (segment.type === 'daily') {
-                tooltipText = `Günlük Video - ${dateDisplay}`;
-            } else if (segment.type === 'hourly') {
-                tooltipText = `15 Dakikalık Video - ${segment.label}`;
-            } else {
-                tooltipText = `5 Dakikalık Video - ${segment.label}`;
-            }
-            
-            segmentEl.title = tooltipText;
-            segmentEl.setAttribute('data-path', segment.streamPath);
-            
-            // Position the segment based on minute (for 5min videos)
-            if (segment.type === '5min') {
-                const minute = segment.minute;
-                segmentEl.style.left = `${(minute / 60) * 100}%`;
-                segmentEl.style.width = '8%'; // Width for 5min segments
-            } else if (segment.type === 'hourly') {
-                // 15-minute videos span a quarter of the hour
-                const minute = segment.minute;
-                segmentEl.style.left = `${(minute / 60) * 100}%`;
-                segmentEl.style.width = '25%'; // Width for 15min segments
-            } else {
-                // Daily videos span the whole day
-                segmentEl.style.width = '100%';
-            }
-            
-            // Add click handler
-            segmentEl.addEventListener('click', () => {
-                playStaffVideoStreaming(segment);
-            });
-            
-            hourContainer.appendChild(segmentEl);
+        if (!hourlySegments[hour]) {
+            hourlySegments[hour] = [];
         }
+        hourlySegments[hour].push(segment);
     });
     
-    // If no segments, show empty message
-    if (data.segments.length === 0) {
-        timelineContainer.innerHTML = `
-            <div class="timeline-empty">
-                <i class="fas fa-calendar-times"></i>
-                <p>Bu tarih için video kaydı bulunamadı</p>
+    // Sort hours
+    const sortedHours = Object.keys(hourlySegments).sort((a, b) => parseInt(a) - parseInt(b));
+    
+    // Create timeline HTML
+    let timelineHTML = `<div class="timeline-wrapper">`;
+    
+    // Add daily videos at the top if they exist
+    const dailyVideos = segments.filter(segment => segment.type === 'daily');
+    if (dailyVideos.length > 0) {
+        timelineHTML += `
+            <div class="timeline-section daily-section">
+                <div class="timeline-header">
+                    <span class="timeline-label">Günlük Video</span>
+                </div>
+                <div class="timeline-items">
+        `;
+        
+        dailyVideos.forEach(video => {
+            timelineHTML += `
+                <div class="timeline-item daily-item" data-stream-path="${video.streamPath}">
+                    <div class="timeline-item-content">
+                        <i class="fas fa-film"></i>
+                        <span>${video.label}</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        timelineHTML += `
+                </div>
             </div>
         `;
     }
+    
+    // Add hourly timeline
+    timelineHTML += `<div class="timeline-hours">`;
+    
+    sortedHours.forEach(hour => {
+        const hourSegments = hourlySegments[hour];
+        
+        // Format hour for display
+        const displayHour = `${hour.padStart(2, '0')}:00`;
+        
+        timelineHTML += `
+            <div class="timeline-hour">
+                <div class="hour-marker">
+                    <span class="hour-label">${displayHour}</span>
+                </div>
+                <div class="hour-segments">
+        `;
+        
+        // First add hourly videos for this hour
+        const hourlyVideos = hourSegments.filter(segment => segment.type === 'hourly');
+        if (hourlyVideos.length > 0) {
+            hourlyVideos.forEach(video => {
+                timelineHTML += `
+                    <div class="timeline-item hourly-item" data-stream-path="${video.streamPath}">
+                        <div class="timeline-item-content">
+                            <i class="fas fa-film"></i>
+                            <span>15 Dakika - ${video.hour.toString().padStart(2, '0')}:${video.minute.toString().padStart(2, '0')}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        // Then add 5-minute videos
+        const fiveMinVideos = hourSegments.filter(segment => segment.type === '5min');
+        if (fiveMinVideos.length > 0) {
+            fiveMinVideos.forEach(video => {
+                timelineHTML += `
+                    <div class="timeline-item five-min-item" data-stream-path="${video.streamPath}">
+                        <div class="timeline-item-content">
+                            <i class="fas fa-film"></i>
+                            <span>5 Dakika - ${video.hour.toString().padStart(2, '0')}:${video.minute.toString().padStart(2, '0')}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        timelineHTML += `
+                </div>
+            </div>
+        `;
+    });
+    
+    timelineHTML += `</div></div>`;
+    
+    // Set the HTML
+    timelineContainer.innerHTML = timelineHTML;
+    
+    // Add click event listeners to all timeline items
+    const timelineItems = timelineContainer.querySelectorAll('.timeline-item');
+    timelineItems.forEach(item => {
+        item.addEventListener('click', function() {
+            const streamPath = this.getAttribute('data-stream-path');
+            if (streamPath) {
+                openVideoPlayer(streamPath);
+            }
+        });
+    });
 }
 
 /**
@@ -586,4 +505,35 @@ function initializeVideoHistoryControls() {
             videosTab.insertBefore(timelineContainer, videosTab.firstChild);
         }
     }
+}
+
+// Update the date filter dropdown
+function updateDateFilterDropdown(availableDates) {
+    const dateFilter = document.getElementById('video-date-filter');
+    if (!dateFilter) return;
+    
+    // Keep the today option
+    dateFilter.innerHTML = '<option value="today" selected>Bugün</option>';
+    
+    // Add available dates
+    if (availableDates && availableDates.length > 0) {
+        availableDates.forEach(date => {
+            if (date && date.length === 8) {
+                const year = date.substring(0, 4);
+                const month = date.substring(4, 6);
+                const day = date.substring(6, 8);
+                const displayDate = `${day}.${month}.${year}`;
+                
+                dateFilter.innerHTML += `<option value="${date}">${displayDate}</option>`;
+            }
+        });
+    }
+    
+    // Add event listener to reload videos when date changes
+    dateFilter.addEventListener('change', function() {
+        const staffId = document.getElementById('modal-staff-name').getAttribute('data-staff-id');
+        if (staffId) {
+            fetchStaffVideoHistory(staffId, this.value);
+        }
+    });
 } 
