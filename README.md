@@ -1,18 +1,21 @@
 # OEKS Team Tracker
 
 ## Overview
-OEKS Team Tracker is a lightweight, low-resource monitoring solution designed to track the productivity and activity of remote teams in real-time. This application captures video from staff computers at regular intervals and displays them in a centralized management dashboard, providing managers with an instant view of team activity.
+OEKS Team Tracker is a lightweight, low-resource monitoring solution designed to track the productivity and activity of remote teams in real-time. This application captures screenshots from staff computers at regular intervals and displays them in a centralized management dashboard, providing managers with an instant view of team activity.
 
 ## Features
-- **Real-Time Video Monitoring**: Automatic video capture at regular intervals
+- **Real-Time Screenshot Monitoring**: Automatic screenshot capture at regular intervals
 - **Centralized Management Dashboard**: View all staff activity from a single panel
 - **Staff Filtering**: Filter staff by name, department, or status
 - **Live Viewing Mode**: Full-screen, real-time monitoring for selected staff
 - **Automatic Status Indicators**: Active/inactive staff status tracking
 - **Dark Theme Interface**: Modern design that reduces eye strain
-- **Local Storage**: Videos are stored locally, no cloud required
-- **Low Bandwidth Usage**: Optimized video compression
+- **Local Storage**: Screenshots are stored locally, no cloud required
+- **Low Bandwidth Usage**: Optimized image compression
 - **History Playback**: Review staff activity with interactive timeline and playback controls
+- **5-Minute Video Generation**: Automatic creation of 5-minute videos from recent screenshots
+- **Video History**: Browse and play videos generated from staff screenshots
+- **History Search**: Search through screenshot history by time or filename
 - **Multilingual Support**: Full Turkish interface with English option
 
 ## Architecture
@@ -20,15 +23,16 @@ OEKS Team Tracker consists of two simple and effective main components:
 
 1. **Staff Application (`staff_app.py`)**: 
    - Runs on staff computers
-   - Captures video at specific intervals
-   - Transmits video securely to the main server via WebSocket
+   - Captures screenshots at specific intervals
+   - Transmits screenshots securely to the main server via WebSocket
    - Retrieves department and name information from configuration file
 
 2. **Admin Server (`admin_server.py`)**: 
    - Receives and stores data from staff applications
    - Combines WebSocket and HTTP servers
    - Provides a web-based management dashboard
-   - Organizes and serves videos
+   - Organizes and serves screenshots
+   - Generates videos from screenshots
    - Tracks staff status
 
 3. **Frontend (Modularized Structure)**:
@@ -38,6 +42,7 @@ OEKS Team Tracker consists of two simple and effective main components:
    - `js/dashboard.js`: Dashboard display, filter controls, and stats
    - `js/modal.js`: Modal dialog and live view functionality
    - `js/history.js`: Staff history viewing and playback
+   - `js/video-history.js`: Video history viewing and playback
    - `js/script.js`: Application initialization and component integration
 
 ## Installation
@@ -71,7 +76,8 @@ OEKS Team Tracker consists of two simple and effective main components:
      "host": "0.0.0.0",
      "ws_port": 8765,
      "http_port": 8080,
-     "videos_dir": "videos"
+     "screenshots_dir": "screenshots",
+     "retention_days": 30
    }
    ```
 
@@ -89,8 +95,8 @@ OEKS Team Tracker consists of two simple and effective main components:
      "staff_id": "staff_pc_UNIQUE_ID",
      "name": "Staff Name",
      "division": "Department",
-     "video_interval": 3,
-     "video_quality": 30
+     "screenshot_interval": 3,
+     "jpeg_quality": 30
    }
    ```
 
@@ -101,17 +107,20 @@ OEKS Team Tracker consists of two simple and effective main components:
 
 ## Usage
 1. Access the management interface via browser: `http://SERVER_IP:8080`
-2. View the list of all staff and their live videos
+2. View the list of all staff and their live screenshots
 3. Use the filters at the top to filter staff by name, department, or status
 4. Click on any staff card to enter live viewing mode with detailed information
-5. In live view mode, access the history section to review past activity
-6. Use the option in the top right corner to change the refresh rate
+5. In live view mode, access the history section to review past screenshots
+6. Use the tabs to switch between screenshot history and video history
+7. Use the search function to find specific screenshots by time or filename
+8. View automatically generated 5-minute videos of staff activity
+9. Use the option in the top right corner to change the refresh rate
 
 ## Troubleshooting
 - **Connection Issues**: Make sure the server IP address is correctly configured and the necessary ports are open
-- **Videos Not Visible**: Check that the folder where videos are saved exists and that you've done a full refresh (Ctrl+F5) in your browser
+- **Screenshots Not Visible**: Check that the folder where screenshots are saved exists and that you've done a full refresh (Ctrl+F5) in your browser
 - **WebSocket Errors**: Ensure your firewall allows WebSocket connections
-- **Video Playback Issues**: Make sure your browser supports HTML5 video playback
+- **Video Playback Issues**: Make sure your browser supports HTML5 video playback and that the video codec is compatible
 
 ## Security Measures
 - The API key must be the same in both configuration files
@@ -121,29 +130,33 @@ OEKS Team Tracker consists of two simple and effective main components:
 
 ## Technical Details
 
-### Video Capture
-Videos are captured using advanced screen recording techniques, compressed, and transmitted to the server. Video quality and capture interval are configurable.
+### Screenshot Capture
+Screenshots are captured using advanced screen capture techniques, compressed, and transmitted to the server. Image quality and capture interval are configurable.
+
+### Video Generation
+The system automatically generates 5-minute videos from recent screenshots every 5 minutes. These videos are stored in a videos subdirectory for each staff member and can be accessed through the admin interface.
 
 ### Data Transmission
 Two main communication channels are used:
-- **WebSocket**: For real-time transmission of videos
-- **HTTP**: For web interface and video service
+- **WebSocket**: For real-time transmission of screenshots
+- **HTTP**: For web interface and screenshot/video service
 
 ### Data Storage
-Videos are stored in folders organized by staff ID, named with timestamps. The latest video for each staff member can be accessed via `latest.mp4`.
+Screenshots are stored in folders organized by staff ID, named with timestamps. The latest screenshot for each staff member can be accessed via `latest.jpg`. Videos are stored in a `videos` subdirectory within each staff folder.
 
 ### Modular Frontend
-The application's frontend is now modularized for easier maintenance:
+The application's frontend is modularized for easier maintenance:
 - **CSS**: All styles are in a separate CSS file
-- **JavaScript**: Functionality is split into logical modules (utils, dashboard, modal, history, and main script)
+- **JavaScript**: Functionality is split into logical modules (utils, dashboard, modal, history, video-history, and main script)
 
 ## Future Developments
-- Automatic cleanup and archiving of old videos
+- Automatic cleanup and archiving of old screenshots and videos
 - More advanced user authorization system
 - Staff activity reports and statistics
 - Mobile application support
 - Multi-language support
-- Video analysis and anomaly detection
+- Image analysis and anomaly detection
+- Full-day video generation
 
 ## License
 This software is licensed under [license information].
@@ -153,113 +166,8 @@ For any questions, suggestions, or contributions, please contact:
 - Email: vehbi.oztomurcuk@gmail.com
 - GitHub: vehbioztomurcuk
 
-```
-oeks-tt-2
-├─ admin_config.json
-├─ admin_server.py
-├─ archieve
-│  ├─ api_server.py
-│  ├─ combined_server.py
-│  ├─ package.bat
-│  └─ trash
-│     ├─ latest-message.md
-│     ├─ Prompt-2.md
-│     └─ prompt.md
-├─ cleanup_script.py
-├─ config.json
-├─ css
-│  └─ styles.css
-├─ index.html
-├─ js
-│  ├─ dashboard.js
-│  ├─ history.js
-│  ├─ modal.js
-│  ├─ script.js
-│  └─ utils.js
-├─ README-TR.md
-├─ README.md
-├─ requirements.txt
-├─ save.md
-├─ staff_app.py
-└─ videos
+## Project Structure
 
-```
-```
-oeks-tt-2
-├─ admin_config.json
-├─ admin_server.py
-├─ archieve
-│  ├─ api_server.py
-│  ├─ combined_server.py
-│  ├─ package.bat
-│  └─ trash
-│     ├─ latest-message.md
-│     ├─ Prompt-2.md
-│     └─ prompt.md
-├─ cleanup_script.py
-├─ config.json
-├─ css
-│  └─ styles.css
-├─ index.html
-├─ js
-│  ├─ dashboard.js
-│  ├─ history.js
-│  ├─ modal.js
-│  ├─ script.js
-│  └─ utils.js
-├─ README-TR.md
-├─ README.md
-├─ requirements.txt
-├─ save.md
-├─ staff_app.py
-└─ videos
-   └─ staff_pc_141
-
-```
-```
-oeks-tt-v2
-├─ admin_config.json
-├─ admin_server.py
-├─ cleanup_script.py
-├─ config.json
-├─ css
-│  └─ styles.css
-├─ index.html
-├─ js
-│  ├─ dashboard.js
-│  ├─ history.js
-│  ├─ modal.js
-│  ├─ script.js
-│  └─ utils.js
-├─ README-TR.md
-├─ README.md
-├─ requirements.txt
-├─ save.md
-└─ staff_app.py
-
-```
-```
-oeks-tt-v2
-├─ admin_config.json
-├─ admin_server.py
-├─ cleanup_script.py
-├─ config.json
-├─ css
-│  └─ styles.css
-├─ index.html
-├─ js
-│  ├─ dashboard.js
-│  ├─ history.js
-│  ├─ modal.js
-│  ├─ script.js
-│  └─ utils.js
-├─ README-TR.md
-├─ README.md
-├─ requirements.txt
-├─ save.md
-└─ staff_app.py
-
-```
 ```
 oeks-tt-v2
 ├─ admin_config.json
@@ -280,6 +188,7 @@ oeks-tt-v2
 ├─ README.md
 ├─ requirements.txt
 ├─ save.md
+├─ selam.html
 └─ staff_app.py
 
 ```

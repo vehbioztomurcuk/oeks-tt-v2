@@ -15,6 +15,11 @@ import time
 import shutil
 import cv2
 import glob
+import tempfile
+
+# Add new imports for video streaming
+import re
+from http import HTTPStatus
 
 # Configure logging
 logging.basicConfig(
@@ -40,7 +45,9 @@ def load_config():
             "ws_port": 8765,
             "http_port": 8080,
             "screenshots_dir": "screenshots",
-            "retention_days": 30
+            "retention_days": 30,
+            "hourly_video_enabled": True,
+            "daily_video_enabled": True
         }
         
         # Merge with defaults
@@ -60,7 +67,9 @@ def load_config():
             "ws_port": 8765,
             "http_port": 8080,
             "screenshots_dir": "screenshots",
-            "retention_days": 30
+            "retention_days": 30,
+            "hourly_video_enabled": True,
+            "daily_video_enabled": True
         }
         config = default_config  # Assign to the global config variable
         return default_config
@@ -89,6 +98,11 @@ class HTTPHandler(BaseHTTPRequestHandler):
             # API endpoints
             elif path.startswith("/api/"):
                 self.handle_api_request(path)
+                return
+            
+            # Handle video streaming
+            elif path.startswith("/stream/"):
+                self.handle_video_streaming(path)
                 return
             
             # Handle CSS files
@@ -374,18 +388,41 @@ class HTTPHandler(BaseHTTPRequestHandler):
             query = urlparse(self.path).query
             params = dict(parse_qsl(query))
             
-            # Extract date filter parameter
+            # Extract date filter parameter and video type
             date_filter = params.get("date", "all")
+            video_type = params.get("type", "all")  # New parameter: 5min, hourly, daily
             
             # Get video history for the staff member
-            logger.info(f"Fetching video history for staff ID: {staff_id}, date filter: {date_filter}")
-            video_data = self.get_staff_videos(staff_id, date_filter)
+            logger.info(f"Fetching video history for staff ID: {staff_id}, date filter: {date_filter}, type: {video_type}")
+            video_data = self.get_staff_videos(staff_id, date_filter, video_type)
             
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(json.dumps(video_data).encode())
+        
+        # New API endpoint for video timeline data
+        elif path.startswith("/api/video-timeline/"):
+            # Extract staff_id and date from path: /api/video-timeline/{staff_id}/{date}
+            parts = path.split("/api/video-timeline/")[1].split('/')
+            staff_id = parts[0]
+            
+            # Parse query parameters
+            query = urlparse(self.path).query
+            params = dict(parse_qsl(query))
+            
+            # Extract date parameter
+            date = params.get("date", datetime.now().strftime("%Y%m%d"))
+            
+            # Get timeline data
+            timeline_data = self.get_video_timeline(staff_id, date)
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(timeline_data).encode())
         
         else:
             # Unknown API endpoint
@@ -394,6 +431,393 @@ class HTTPHandler(BaseHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"error": "API endpoint not found"}).encode())
+
+    def handle_video_streaming(self, path):
+        """Handle video streaming requests with timestamp support"""
+        try:
+            # Extract staff_id and video path from the URL
+            # Format: /stream/{staff_id}/{video_type}/{filename}?start=seconds
+            parts = path.split('/stream/')[1].split('/')
+            
+            if len(parts) < 3:  # Changed from 4 to 3 to be more flexible
+                self.send_response(400)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b'Invalid streaming URL format')
+                return
+            
+            staff_id = parts[0]
+            video_type = parts[1]  # 5min, hourly, daily
+            
+            # Join the remaining parts as the filename (in case filename contains slashes)
+            filename = '/'.join(parts[2:])
+            
+            # Parse query parameters
+            query = urlparse(self.path).query
+            params = dict(parse_qsl(query))
+            start_time = params.get("start", "0")
+            
+            try:
+                start_seconds = int(start_time)
+            except ValueError:
+                start_seconds = 0
+            
+            # Construct the video file path
+            screenshots_dir = config["screenshots_dir"]
+            if video_type == "5min":
+                video_path = os.path.join(screenshots_dir, staff_id, "videos", filename)
+            elif video_type == "hourly":
+                video_path = os.path.join(screenshots_dir, staff_id, "videos", "hourly", filename)
+            elif video_type == "daily":
+                video_path = os.path.join(screenshots_dir, staff_id, "videos", "daily", filename)
+            else:
+                video_path = os.path.join(screenshots_dir, staff_id, "videos", filename)
+            
+            logger.info(f"Streaming video: {video_path}, start time: {start_seconds}s")
+            
+            if not os.path.exists(video_path):
+                logger.warning(f"Video file not found: {video_path}")
+                self.send_response(404)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(f'Video file not found: {video_path}'.encode())
+                return
+            
+            # Get file size
+            file_size = os.path.getsize(video_path)
+            
+            # Handle range requests for seeking
+            range_header = self.headers.get('Range', '').strip()
+            range_match = re.match(r'bytes=(\d+)-(\d*)', range_header)
+            
+            start_byte = 0
+            end_byte = file_size - 1
+            
+            # If we have a range request
+            if range_match:
+                start_byte = int(range_match.group(1))
+                if range_match.group(2):
+                    end_byte = int(range_match.group(2))
+                
+                # If start_seconds is specified and no range header, calculate byte position
+                # This is a simplified approach - for accurate seeking, we'd need to analyze the video
+            elif start_seconds > 0:
+                # Rough estimate: assume 500KB per second of video as a heuristic
+                # This is very approximate and depends on video bitrate
+                start_byte = min(start_seconds * 500 * 1024, file_size - 1)
+            
+            content_length = end_byte - start_byte + 1
+            
+            # Send appropriate headers
+            if range_header:
+                self.send_response(206)  # Partial Content
+                self.send_header('Content-Range', f'bytes {start_byte}-{end_byte}/{file_size}')
+            else:
+                self.send_response(200)
+            
+            self.send_header('Content-Type', 'video/mp4')
+            self.send_header('Content-Length', str(content_length))
+            self.send_header('Accept-Ranges', 'bytes')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            
+            # Stream the video file in chunks
+            with open(video_path, 'rb') as f:
+                f.seek(start_byte)
+                bytes_to_send = content_length
+                chunk_size = 64 * 1024  # 64KB chunks
+                
+                while bytes_to_send > 0:
+                    chunk = f.read(min(chunk_size, bytes_to_send))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    bytes_to_send -= len(chunk)
+            
+            logger.info(f"Streamed video {video_path} from position {start_byte}")
+        
+        except Exception as e:
+            logger.error(f"Error in video streaming handler: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(f'Error streaming video: {str(e)}'.encode())
+
+    def get_staff_videos(self, staff_id, date_filter=None, video_type="all"):
+        """Get video history data for a staff member
+        
+        Args:
+            staff_id (str): ID of the staff member
+            date_filter (str, optional): Date filter in YYYYMMDD format
+            video_type (str, optional): Type of videos to return (5min, hourly, daily, all)
+        
+        Returns:
+            dict: Video history data for the staff member
+        """
+        global config
+        
+        video_data = {
+            "staffId": staff_id,
+            "videos": [],
+            "availableDates": [],
+            "hourlyVideos": [],
+            "dailyVideos": []
+        }
+        
+        screenshots_dir = config["screenshots_dir"]
+        staff_dir = os.path.join(screenshots_dir, staff_id)
+        videos_dir = os.path.join(staff_dir, "videos")
+        hourly_dir = os.path.join(videos_dir, "hourly")
+        daily_dir = os.path.join(videos_dir, "daily")
+        
+        # Check if the videos directory exists
+        if not os.path.exists(videos_dir) or not os.path.isdir(videos_dir):
+            logger.warning(f"Videos directory not found: {videos_dir}")
+            return video_data
+        
+        # Get 5-minute video files if requested
+        if video_type in ["all", "5min"]:
+            video_files = [f for f in os.listdir(videos_dir) if f.endswith('.mp4') and f != 'latest_5min.mp4' 
+                          and os.path.isfile(os.path.join(videos_dir, f))]
+            
+            # Get available dates from filenames
+            all_dates = set()
+            date_filtered_files = []
+            
+            for file in video_files:
+                # Extract date from filename if possible
+                try:
+                    # Assuming filename format is staff_id-last5min-YYYYMMDD-HHMMSS.mp4
+                    date_part = file.split('-')
+                    if len(date_part) >= 3:
+                        # Extract date (YYYYMMDD)
+                        date_str = date_part[2]
+                        all_dates.add(date_str)
+                        
+                        # Apply date filter if provided
+                        if date_filter and date_filter != 'all':
+                            if date_str == date_filter:
+                                date_filtered_files.append(file)
+                        else:
+                            date_filtered_files.append(file)
+                except Exception as e:
+                    logger.warning(f"Error parsing date from video filename {file}: {e}")
+                    date_filtered_files.append(file)  # Include files with unparseable dates
+            
+            # If date filter was applied, use filtered files, otherwise use all files
+            files_to_process = date_filtered_files if date_filter else video_files
+            
+            # Sort by modification time (newest first)
+            files_to_process.sort(key=lambda x: os.path.getmtime(os.path.join(videos_dir, x)), reverse=True)
+            
+            # Build video items
+            video_items = []
+            for file in files_to_process:
+                file_path = os.path.join(videos_dir, file)
+                timestamp = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
+                
+                # Extract duration from filename if possible
+                duration = "5 dakika"  # Default
+                if "last5min" in file:
+                    duration = "5 dakika"
+                
+                video_items.append({
+                    "filename": file,
+                    "path": f"screenshots/{staff_id}/videos/{file}",
+                    "streamPath": f"stream/{staff_id}/5min/{file}",
+                    "timestamp": timestamp,
+                    "duration": duration,
+                    "type": "5min"
+                })
+            
+            video_data["videos"] = video_items
+            video_data["availableDates"] = sorted(list(all_dates), reverse=True)
+        
+        # Get hourly video files if requested
+        if video_type in ["all", "hourly"] and os.path.exists(hourly_dir) and os.path.isdir(hourly_dir):
+            hourly_files = [f for f in os.listdir(hourly_dir) if f.endswith('.mp4') and os.path.isfile(os.path.join(hourly_dir, f))]
+            
+            # Apply date filter if provided
+            if date_filter and date_filter != 'all':
+                hourly_files = [f for f in hourly_files if date_filter in f]
+            
+            # Sort by modification time (newest first)
+            hourly_files.sort(key=lambda x: os.path.getmtime(os.path.join(hourly_dir, x)), reverse=True)
+            
+            # Build hourly video items
+            hourly_items = []
+            for file in hourly_files:
+                file_path = os.path.join(hourly_dir, file)
+                timestamp = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
+                
+                # Extract hour from filename
+                hour_match = re.search(r'hour-(\d{2})', file)
+                hour_label = f"Saat {hour_match.group(1)}:00" if hour_match else "Saatlik Video"
+                
+                hourly_items.append({
+                    "filename": file,
+                    "path": f"screenshots/{staff_id}/videos/hourly/{file}",
+                    "streamPath": f"stream/{staff_id}/hourly/{file}",
+                    "timestamp": timestamp,
+                    "duration": "1 saat",
+                    "label": hour_label,
+                    "type": "hourly"
+                })
+            
+            video_data["hourlyVideos"] = hourly_items
+        
+        # Get daily video files if requested
+        if video_type in ["all", "daily"] and os.path.exists(daily_dir) and os.path.isdir(daily_dir):
+            daily_files = [f for f in os.listdir(daily_dir) if f.endswith('.mp4') and os.path.isfile(os.path.join(daily_dir, f))]
+            
+            # Apply date filter if provided
+            if date_filter and date_filter != 'all':
+                daily_files = [f for f in daily_files if date_filter in f]
+            
+            # Sort by modification time (newest first)
+            daily_files.sort(key=lambda x: os.path.getmtime(os.path.join(daily_dir, x)), reverse=True)
+            
+            # Build daily video items
+            daily_items = []
+            for file in daily_files:
+                file_path = os.path.join(daily_dir, file)
+                timestamp = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
+                
+                # Extract date from filename for label
+                date_match = re.search(r'(\d{8})', file)
+                if date_match:
+                    date_str = date_match.group(1)
+                    try:
+                        date_obj = datetime.strptime(date_str, "%Y%m%d")
+                        date_label = date_obj.strftime("%d.%m.%Y")
+                    except:
+                        date_label = "Günlük Video"
+                else:
+                    date_label = "Günlük Video"
+                
+                daily_items.append({
+                    "filename": file,
+                    "path": f"screenshots/{staff_id}/videos/daily/{file}",
+                    "streamPath": f"stream/{staff_id}/daily/{file}",
+                    "timestamp": timestamp,
+                    "duration": "Tam gün",
+                    "label": date_label,
+                    "type": "daily"
+                })
+            
+            video_data["dailyVideos"] = daily_items
+        
+        return video_data
+
+    def get_video_timeline(self, staff_id, date):
+        """Get timeline data for a specific date
+        
+        Args:
+            staff_id (str): ID of the staff member
+            date (str): Date in YYYYMMDD format
+        
+        Returns:
+            dict: Timeline data with available video segments
+        """
+        global config
+        
+        timeline_data = {
+            "staffId": staff_id,
+            "date": date,
+            "segments": []
+        }
+        
+        screenshots_dir = config["screenshots_dir"]
+        staff_dir = os.path.join(screenshots_dir, staff_id)
+        videos_dir = os.path.join(staff_dir, "videos")
+        
+        # Check if the videos directory exists
+        if not os.path.exists(videos_dir) or not os.path.isdir(videos_dir):
+            logger.warning(f"Videos directory not found: {videos_dir}")
+            return timeline_data
+        
+        # Get all video files for the specified date
+        video_files = [f for f in os.listdir(videos_dir) 
+                      if f.endswith('.mp4') and date in f and f != 'latest_5min.mp4'
+                      and os.path.isfile(os.path.join(videos_dir, f))]
+        
+        # Sort by timestamp in filename
+        video_files.sort(key=lambda x: x.split('-')[-1].split('.')[0] if len(x.split('-')) > 3 else "000000")
+        
+        # Build timeline segments
+        for file in video_files:
+            # Extract timestamp from filename
+            try:
+                # Assuming filename format is staff_id-last5min-YYYYMMDD-HHMMSS.mp4
+                parts = file.split('-')
+                if len(parts) >= 4:
+                    time_str = parts[3].split('.')[0]  # HHMMSS
+                    hour = time_str[:2]
+                    minute = time_str[2:4]
+                    
+                    # Create a segment entry
+                    segment = {
+                        "filename": file,
+                        "path": f"screenshots/{staff_id}/videos/{file}",
+                        "streamPath": f"stream/{staff_id}/5min/{file}",
+                        "hour": int(hour),
+                        "minute": int(minute),
+                        "label": f"{hour}:{minute}",
+                        "type": "5min"
+                    }
+                    
+                    timeline_data["segments"].append(segment)
+            except Exception as e:
+                logger.warning(f"Error parsing timestamp from video filename {file}: {e}")
+        
+        # Add hourly videos if available
+        hourly_dir = os.path.join(videos_dir, "hourly")
+        if os.path.exists(hourly_dir) and os.path.isdir(hourly_dir):
+            hourly_files = [f for f in os.listdir(hourly_dir) 
+                           if f.endswith('.mp4') and date in f 
+                           and os.path.isfile(os.path.join(hourly_dir, f))]
+            
+            for file in hourly_files:
+                # Extract hour from filename
+                hour_match = re.search(r'hour-(\d{2})', file)
+                if hour_match:
+                    hour = int(hour_match.group(1))
+                    
+                    # Create a segment entry
+                    segment = {
+                        "filename": file,
+                        "path": f"screenshots/{staff_id}/videos/hourly/{file}",
+                        "streamPath": f"stream/{staff_id}/hourly/{file}",
+                        "hour": hour,
+                        "minute": 0,
+                        "label": f"{hour}:00",
+                        "type": "hourly"
+                    }
+                    
+                    timeline_data["segments"].append(segment)
+        
+        # Add daily video if available
+        daily_dir = os.path.join(videos_dir, "daily")
+        if os.path.exists(daily_dir) and os.path.isdir(daily_dir):
+            daily_files = [f for f in os.listdir(daily_dir) 
+                          if f.endswith('.mp4') and date in f 
+                          and os.path.isfile(os.path.join(daily_dir, f))]
+            
+            for file in daily_files:
+                # Create a segment entry for the daily video
+                segment = {
+                    "filename": file,
+                    "path": f"screenshots/{staff_id}/videos/daily/{file}",
+                    "streamPath": f"stream/{staff_id}/daily/{file}",
+                    "hour": 0,
+                    "minute": 0,
+                    "label": "Tam Gün",
+                    "type": "daily"
+                }
+                
+                timeline_data["segments"].append(segment)
+        
+        return timeline_data
 
     def log_message(self, format, *args):
         logger.info("%s - %s" % (self.address_string(), format % args))
@@ -524,89 +948,6 @@ class HTTPHandler(BaseHTTPRequestHandler):
         history_data["availableDates"] = sorted(list(all_dates), reverse=True)
         
         return history_data
-
-    def get_staff_videos(self, staff_id, date_filter=None):
-        """Get video history data for a staff member
-        
-        Args:
-            staff_id (str): ID of the staff member
-            date_filter (str, optional): Date filter in YYYYMMDD format
-        
-        Returns:
-            dict: Video history data for the staff member
-        """
-        global config
-        
-        video_data = {
-            "staffId": staff_id,
-            "videos": [],
-            "availableDates": []
-        }
-        
-        screenshots_dir = config["screenshots_dir"]
-        staff_dir = os.path.join(screenshots_dir, staff_id)
-        videos_dir = os.path.join(staff_dir, "videos")
-        
-        # Check if the videos directory exists
-        if not os.path.exists(videos_dir) or not os.path.isdir(videos_dir):
-            logger.warning(f"Videos directory not found: {videos_dir}")
-            return video_data
-        
-        # Get video files
-        video_files = [f for f in os.listdir(videos_dir) if f.endswith('.mp4') and f != 'latest_5min.mp4']
-        
-        # Get available dates from filenames
-        all_dates = set()
-        date_filtered_files = []
-        
-        for file in video_files:
-            # Extract date from filename if possible
-            try:
-                # Assuming filename format is staff_id-last5min-YYYYMMDD-HHMMSS.mp4
-                date_part = file.split('-')
-                if len(date_part) >= 3:
-                    # Extract date (YYYYMMDD)
-                    date_str = date_part[2]
-                    all_dates.add(date_str)
-                    
-                    # Apply date filter if provided
-                    if date_filter and date_filter != 'all':
-                        if date_str == date_filter:
-                            date_filtered_files.append(file)
-                    else:
-                        date_filtered_files.append(file)
-            except Exception as e:
-                logger.warning(f"Error parsing date from video filename {file}: {e}")
-                date_filtered_files.append(file)  # Include files with unparseable dates
-        
-        # If date filter was applied, use filtered files, otherwise use all files
-        files_to_process = date_filtered_files if date_filter else video_files
-        
-        # Sort by modification time (newest first)
-        files_to_process.sort(key=lambda x: os.path.getmtime(os.path.join(videos_dir, x)), reverse=True)
-        
-        # Build video items
-        video_items = []
-        for file in files_to_process:
-            file_path = os.path.join(videos_dir, file)
-            timestamp = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
-            
-            # Extract duration from filename if possible
-            duration = "5 dakika"  # Default
-            if "last5min" in file:
-                duration = "5 dakika"
-            
-            video_items.append({
-                "filename": file,
-                "path": f"screenshots/{staff_id}/videos/{file}",
-                "timestamp": timestamp,
-                "duration": duration
-            })
-        
-        video_data["videos"] = video_items
-        video_data["availableDates"] = sorted(list(all_dates), reverse=True)
-        
-        return video_data
 
 # WebSocket server handler
 async def handle_client(websocket):
@@ -1051,49 +1392,238 @@ def generate_staff_video(staff_id, duration_minutes=5):
 # Add a background task to generate videos periodically
 async def video_generation_task():
     """Background task to generate videos from screenshots"""
-    global config
-    
     while True:
         try:
-            # Get all staff directories
-            screenshots_dir = config["screenshots_dir"]
-            if not os.path.exists(screenshots_dir):
-                logger.warning(f"Screenshots directory not found: {screenshots_dir}")
-                await asyncio.sleep(300)  # Sleep for 5 minutes
-                continue
+            logging.info("Starting video generation cycle...")
+            staff_list = get_staff_list()
             
-            staff_dirs = [d for d in os.listdir(screenshots_dir) 
-                         if os.path.isdir(os.path.join(screenshots_dir, d))]
+            for staff_info in staff_list:
+                staff_id = staff_info["staff_id"]
+                
+                # Generate 5-minute videos
+                await generate_staff_video(staff_id)
+                
+                # TESTING: Generate videos every 15 minutes instead of hourly for faster testing
+                # TODO: Change back to 60 minutes after testing is complete
+                await generate_hourly_video(staff_id, minutes=15)
+                
+                # Generate daily videos by combining hourly videos
+                await generate_daily_video(staff_id)
             
-            for staff_id in staff_dirs:
-                # Check if the staff is active
-                metadata_file = os.path.join(screenshots_dir, staff_id, "metadata.json")
-                if os.path.exists(metadata_file):
-                    try:
-                        with open(metadata_file, "r") as f:
-                            metadata = json.load(f)
-                        
-                        # Only generate videos for active staff
-                        if metadata.get("activity_status") == "active":
-                            # Generate 5-minute video
-                            video_path = generate_staff_video(staff_id, 5)
-                            
-                            # Update metadata with video path
-                            if video_path:
-                                metadata["last_5min_video"] = video_path
-                                metadata["last_5min_video_time"] = datetime.now().isoformat()
-                                
-                                with open(metadata_file, "w") as f:
-                                    json.dump(metadata, f)
-                    except Exception as e:
-                        logger.error(f"Error processing metadata for {staff_id}: {e}")
+            logging.info("Completed video generation cycle.")
             
-            logger.info("Completed video generation cycle")
+            # Wait before next cycle (5 minutes)
+            await asyncio.sleep(300)
         except Exception as e:
-            logger.error(f"Error in video generation task: {e}")
+            logging.error(f"Error in video generation task: {e}")
+            await asyncio.sleep(60)  # Wait a bit before retrying
+
+async def generate_hourly_video(staff_id, minutes=60):
+    """
+    Generate hourly video by combining 5-minute segments
+    
+    Args:
+        staff_id: Staff ID
+        minutes: Minutes to combine (default 60, set to 15 for testing)
+    """
+    try:
+        # Get the staff screenshots directory
+        staff_dir = os.path.join(config["screenshots_dir"], staff_id)
+        videos_dir = os.path.join(staff_dir, "videos")
         
-        # Sleep for 5 minutes
-        await asyncio.sleep(300)
+        # Ensure directories exist
+        os.makedirs(videos_dir, exist_ok=True)
+        
+        # Get current hour
+        now = datetime.now()
+        # For testing, we're using 15-minute intervals instead of full hours
+        current_interval = now.replace(minute=now.minute - now.minute % minutes, second=0, microsecond=0)
+        previous_interval = current_interval - timedelta(minutes=minutes)
+        
+        # Format timestamp for filename
+        timestamp = previous_interval.strftime("%Y%m%d-%H%M%S")
+        
+        # Debug log for interval information
+        logging.info(f"[HOURLY VIDEO DEBUG] Staff: {staff_id}, Generating {minutes}-minute video for interval: {previous_interval} to {current_interval}")
+        
+        # Create output filename
+        output_filename = f"{staff_id}-{minutes}min-{timestamp}.mp4"
+        output_path = os.path.join(videos_dir, output_filename)
+        
+        # Check if this hourly video already exists
+        if os.path.exists(output_path):
+            logging.info(f"[HOURLY VIDEO DEBUG] {minutes}-minute video already exists: {output_path}")
+            return output_path
+        
+        # Get list of 5-minute videos in this hour
+        video_files = []
+        expected_segments = minutes // 5  # Number of 5-minute segments we expect
+        
+        logging.info(f"[HOURLY VIDEO DEBUG] Looking for {expected_segments} video segments in time range")
+        
+        # Loop through the expected time range to find 5-minute videos
+        for i in range(expected_segments):
+            segment_time = previous_interval + timedelta(minutes=i*5)
+            segment_timestamp = segment_time.strftime("%Y%m%d-%H%M%S")
+            segment_filename = f"{staff_id}-5min-{segment_timestamp}.mp4"
+            segment_path = os.path.join(videos_dir, segment_filename)
+            
+            if os.path.exists(segment_path):
+                video_files.append(segment_path)
+                logging.info(f"[HOURLY VIDEO DEBUG] Found segment: {segment_filename}")
+            else:
+                logging.warning(f"[HOURLY VIDEO DEBUG] Missing segment: {segment_filename}")
+        
+        # If no videos found, skip
+        if not video_files:
+            logging.warning(f"[HOURLY VIDEO DEBUG] No 5-minute videos found for {staff_id} in the {minutes}-minute interval {timestamp}")
+            return None
+        
+        # If we don't have enough segments, log a warning but continue
+        if len(video_files) < expected_segments:
+            logging.warning(f"[HOURLY VIDEO DEBUG] Only found {len(video_files)}/{expected_segments} segments for {minutes}-minute video")
+        
+        # Create a temporary file to list video files
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            for video_file in video_files:
+                f.write(f"file '{video_file}'\n")
+            temp_list_path = f.name
+        
+        try:
+            # Use ffmpeg to concatenate videos
+            logging.info(f"[HOURLY VIDEO DEBUG] Combining {len(video_files)} videos into {minutes}-minute video")
+            
+            # Construct ffmpeg command
+            ffmpeg_cmd = [
+                'ffmpeg',
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', temp_list_path,
+                '-c', 'copy',
+                output_path
+            ]
+            
+            # Log the command
+            logging.info(f"[HOURLY VIDEO DEBUG] Running command: {' '.join(ffmpeg_cmd)}")
+            
+            # Run the command
+            process = await asyncio.create_subprocess_exec(
+                *ffmpeg_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode != 0:
+                logging.error(f"[HOURLY VIDEO DEBUG] Error combining videos: {stderr.decode()}")
+                return None
+            
+            logging.info(f"[HOURLY VIDEO DEBUG] Successfully created {minutes}-minute video: {output_path}")
+            return output_path
+            
+        finally:
+            # Clean up temp file
+            try:
+                os.unlink(temp_list_path)
+            except:
+                pass
+    
+    except Exception as e:
+        logging.error(f"[HOURLY VIDEO DEBUG] Error generating {minutes}-minute video for {staff_id}: {str(e)}")
+        return None
+
+async def generate_daily_video(staff_id):
+    """Generate daily video by combining hourly segments"""
+    try:
+        # Get the staff screenshots directory
+        staff_dir = os.path.join(config["screenshots_dir"], staff_id)
+        videos_dir = os.path.join(staff_dir, "videos")
+        
+        # Ensure directories exist
+        os.makedirs(videos_dir, exist_ok=True)
+        
+        # Get yesterday's date
+        yesterday = datetime.now() - timedelta(days=1)
+        date_str = yesterday.strftime("%Y%m%d")
+        
+        # Create output filename
+        output_filename = f"{staff_id}-daily-{date_str}.mp4"
+        output_path = os.path.join(videos_dir, output_filename)
+        
+        # Check if this daily video already exists
+        if os.path.exists(output_path):
+            logging.info(f"Daily video already exists: {output_path}")
+            return output_path
+        
+        # Debug log for daily video generation
+        logging.info(f"[DAILY VIDEO DEBUG] Staff: {staff_id}, Generating daily video for date: {date_str}")
+        
+        # Get list of hourly videos for this day
+        # TESTING: Look for 15-minute videos instead of hourly videos
+        # TODO: Change back to hourly pattern after testing
+        video_pattern = f"{staff_id}-15min-{date_str}-*.mp4"
+        video_files = glob.glob(os.path.join(videos_dir, video_pattern))
+        
+        # Sort videos by timestamp
+        video_files.sort()
+        
+        logging.info(f"[DAILY VIDEO DEBUG] Found {len(video_files)} 15-minute videos for {date_str}")
+        
+        # If no videos found, skip
+        if not video_files:
+            logging.warning(f"[DAILY VIDEO DEBUG] No 15-minute videos found for {staff_id} on {date_str}")
+            return None
+        
+        # Create a temporary file to list video files
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            for video_file in video_files:
+                f.write(f"file '{video_file}'\n")
+            temp_list_path = f.name
+        
+        try:
+            # Use ffmpeg to concatenate videos
+            logging.info(f"[DAILY VIDEO DEBUG] Combining {len(video_files)} videos into daily video")
+            
+            # Construct ffmpeg command
+            ffmpeg_cmd = [
+                'ffmpeg',
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', temp_list_path,
+                '-c', 'copy',
+                output_path
+            ]
+            
+            # Log the command
+            logging.info(f"[DAILY VIDEO DEBUG] Running command: {' '.join(ffmpeg_cmd)}")
+            
+            # Run the command
+            process = await asyncio.create_subprocess_exec(
+                *ffmpeg_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode != 0:
+                logging.error(f"[DAILY VIDEO DEBUG] Error combining videos: {stderr.decode()}")
+                return None
+            
+            logging.info(f"[DAILY VIDEO DEBUG] Successfully created daily video: {output_path}")
+            return output_path
+            
+        finally:
+            # Clean up temp file
+            try:
+                os.unlink(temp_list_path)
+            except:
+                pass
+    
+    except Exception as e:
+        logging.error(f"[DAILY VIDEO DEBUG] Error generating daily video for {staff_id}: {str(e)}")
+        return None
 
 if __name__ == "__main__":
     # Load configuration at startup

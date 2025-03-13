@@ -1,9 +1,9 @@
 {
     "admin_ws_url": "ws://192.168.1.177:8765",
     "api_key": "oeks_secret_key_2024",
-    "staff_id": "staff_pc_test",
-    "name": "Test User",
-    "division": "Testing",
+    "staff_id": "staff_pc_test_2",
+    "name": "Test User 2",
+    "division": "Testing 2",
     "screenshot_interval": 3,
     "jpeg_quality": 30
 } 

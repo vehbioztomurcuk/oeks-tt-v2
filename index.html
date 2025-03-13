@@ -217,12 +217,26 @@
                         <div class="history-tab-content" id="videos-tab">
                             <h3><i class="fas fa-film"></i> Video Geçmişi</h3>
                             
+                            <!-- Video Timeline Container -->
+                            <div id="video-timeline-container" class="video-timeline-container">
+                                <!-- Will be populated with timeline data -->
+                            </div>
+                            
                             <div class="video-history-controls">
                                 <div class="form-group">
                                     <label for="video-date-filter">Tarih:</label>
                                     <select id="video-date-filter">
                                         <option value="all">Tümü</option>
                                         <!-- Will be populated with available dates -->
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="video-type-filter">Video Tipi:</label>
+                                    <select id="video-type-filter">
+                                        <option value="all">Tümü</option>
+                                        <option value="daily">Günlük</option>
+                                        <option value="hourly">Saatlik</option>
+                                        <option value="5min">5 Dakikalık</option>
                                     </select>
                                 </div>
                             </div>
@@ -239,6 +253,40 @@
             </div>
         </div>
     </div>
+
+    <!-- Video Player Modal Template (will be cloned when needed) -->
+    <template id="video-player-template">
+        <div class="modal video-player-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2><i class="fas fa-film"></i> <span class="video-title">Video Oynatıcı</span></h2>
+                    <div class="modal-header-controls">
+                        <button class="fullscreen-btn" title="Tam ekran">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                        <button class="close-btn" title="Kapat">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <div class="video-container">
+                        <div class="loading-indicator">
+                            <i class="fas fa-spinner refresh-animation"></i>
+                        </div>
+                        <video controls>
+                            <source src="" type="video/mp4">
+                            Video oynatılamıyor.
+                        </video>
+                    </div>
+                    <div class="video-info">
+                        <p class="video-duration">Video süresi: <span>-</span></p>
+                        <p class="video-timestamp">Oluşturma zamanı: <span>-</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
 
     <!-- JavaScript files -->
     <script src="js/utils.js"></script>

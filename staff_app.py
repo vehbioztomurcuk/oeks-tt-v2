@@ -97,14 +97,20 @@ async def send_screenshots():
     """Main function to send screenshots to admin server"""
     config = load_config()
     staff_id = config.get("staff_id", "unknown")
-    interval = config.get("screenshot_interval", 3)
+    
+    # TESTING: Use a shorter interval for testing (1 minute instead of 3)
+    # TODO: Change back to config.get("screenshot_interval", 3) after testing
+    interval = 1  # 1 second interval for faster testing
+    
     quality = config.get("jpeg_quality", 30)
+    
+    logging.info(f"[DEBUG] Starting screenshot capture with {interval} second interval")
     
     while True:
         try:
             # Connect to the WebSocket server
-            logger.info(f"Connecting to {config['admin_ws_url']}")
-            async with websockets.connect(config["admin_ws_url"]) as websocket:
+            logging.info(f"Connecting to {config['admin_ws_url']}")
+            async with websockets.connect(config['admin_ws_url']) as websocket:
                 # Authenticate with server
                 auth_message = {
                     "type": "auth",
@@ -119,13 +125,14 @@ async def send_screenshots():
                 response_data = json.loads(response)
                 
                 if response_data.get("status") != "authenticated":
-                    logger.error(f"Authentication failed: {response_data.get('message', 'Unknown error')}")
+                    logging.error(f"Authentication failed: {response_data.get('message', 'Unknown error')}")
                     await asyncio.sleep(10)  # Wait before retrying
                     continue
                 
-                logger.info("Authentication successful")
+                logging.info("Authentication successful")
                 
                 # Send screenshots at regular intervals
+                screenshot_count = 0
                 while True:
                     # Capture screenshot
                     screenshot_data = capture_screenshot(quality)
@@ -149,17 +156,18 @@ async def send_screenshots():
                         # Then send the binary screenshot data
                         await websocket.send(screenshot_data)
                         
-                        logger.info(f"Sent screenshot, size: {len(screenshot_data)} bytes")
+                        screenshot_count += 1
+                        logging.info(f"[DEBUG] Sent screenshot #{screenshot_count}, size: {len(screenshot_data)} bytes")
                     else:
-                        logger.warning("Failed to capture screenshot")
+                        logging.warning("Failed to capture screenshot")
                     
                     # Sleep for the configured interval
                     await asyncio.sleep(interval)
                     
         except websockets.exceptions.ConnectionClosed as e:
-            logger.error(f"WebSocket connection closed: {e}")
+            logging.error(f"WebSocket connection closed: {e}")
         except Exception as e:
-            logger.error(f"Error: {e}")
+            logging.error(f"Error: {e}")
         
         await asyncio.sleep(5)  # Wait before reconnecting
 
