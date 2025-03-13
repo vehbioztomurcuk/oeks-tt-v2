@@ -35,40 +35,25 @@ function openModal(staffId) {
     }
     
     // Update modal content
-    document.getElementById('modal-staff-name').textContent = staff.name || "Unknown User";
-    document.getElementById('detail-name').textContent = staff.name || "Unknown User";
-    document.getElementById('detail-division').textContent = staff.division || "Unassigned";
-    document.getElementById('detail-staff-id').textContent = staffId;
-    
-    // Update status if element exists
-    const detailStatus = document.getElementById('detail-status');
-    if (detailStatus) {
-        detailStatus.textContent = staff.recording_status === 'active' ? 'Aktif' : 'İnaktif';
-    }
+    document.getElementById('modal-staff-name').textContent = staff.name || "Bilinmeyen Kullanıcı";
+    document.getElementById('detail-division').textContent = staff.division || "Atanmamış";
     
     // Update status indicator
-    const statusIndicator = document.querySelector('.modal-header .status-indicator');
+    const statusIndicator = document.getElementById('modal-status-indicator');
     if (statusIndicator) {
         statusIndicator.className = 'status-indicator ' + 
             (staff.recording_status === 'active' ? 'status-active' : 'status-inactive');
     }
     
-    // Load screenshot history for this staff member
-    fetchStaffHistory(staffId);
+    // Update last activity time
+    const detailLastTime = document.getElementById('detail-last-time');
+    if (detailLastTime) {
+        const now = new Date();
+        detailLastTime.textContent = `${formatTimeDiff(now, new Date(staff.timestamp))} önce`;
+    }
     
-    // Reset tab state
-    const tabButtons = document.querySelectorAll('.history-tab-btn');
-    const tabContents = document.querySelectorAll('.history-tab-content');
-    
-    tabButtons.forEach(btn => btn.classList.remove('active'));
-    tabContents.forEach(content => content.classList.remove('active'));
-    
-    // Set screenshots tab as active
-    const screenshotsTabBtn = document.querySelector('.history-tab-btn[data-tab="screenshots"]');
-    if (screenshotsTabBtn) screenshotsTabBtn.classList.add('active');
-    
-    const screenshotsTab = document.getElementById('screenshots-tab');
-    if (screenshotsTab) screenshotsTab.classList.add('active');
+    // Load video history for this staff member
+    fetchStaffVideoHistory(staffId);
     
     // Show modal immediately
     document.getElementById('live-view-modal').style.display = 'block';
@@ -109,6 +94,7 @@ function openModal(staffId) {
         // Check if staff has a 5-minute video
         if (staff.last_5min_video) {
             view5minBtn.disabled = false;
+            view5minBtn.innerHTML = '<i class="fas fa-film"></i> Son 5 Dakika';
             view5minBtn.onclick = () => openStaff5MinVideo(staffId);
         } else {
             view5minBtn.disabled = true;

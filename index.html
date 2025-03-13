@@ -113,8 +113,11 @@
     <div id="live-view-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2><i class="fas fa-desktop"></i> <span id="modal-staff-name">Personel</span> Canlı İzleme</h2>
-                <button class="close-btn" id="close-modal"><i class="fas fa-times"></i></button>
+                <h2><i class="fas fa-desktop"></i> <span id="modal-staff-name">Personel</span></h2>
+                <div class="modal-header-controls">
+                    <span class="status-indicator" id="modal-status-indicator"></span>
+                    <button class="close-btn" id="close-modal"><i class="fas fa-times"></i></button>
+                </div>
             </div>
             <div class="modal-body">
                 <div class="live-view-container">
@@ -124,118 +127,64 @@
                     
                     <div class="staff-details">
                         <div class="detail-card">
-                            <h3>Personel ID</h3>
-                            <p id="detail-staff-id">-</p>
+                            <h3>Bilgiler</h3>
+                            <div class="detail-info-grid">
+                                <div class="detail-info-item">
+                                    <span class="detail-label">Departman:</span>
+                                    <span id="detail-division">-</span>
+                                </div>
+                                <div class="detail-info-item">
+                                    <span class="detail-label">Son Aktivite:</span>
+                                    <span id="detail-last-time">-</span>
+                                </div>
+                                <div class="detail-info-item">
+                                    <span class="detail-label">Yenileme:</span>
+                                    <select id="modal-refresh-interval" class="compact-select">
+                                        <option value="1">1 sn</option>
+                                        <option value="3" selected>3 sn</option>
+                                        <option value="5">5 sn</option>
+                                        <option value="10">10 sn</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                         <div class="detail-card">
-                            <h3>İsim</h3>
-                            <p id="detail-name">-</p>
-                        </div>
-                        <div class="detail-card">
-                            <h3>Departman</h3>
-                            <p id="detail-division">-</p>
-                        </div>
-                        <div class="detail-card">
-                            <h3>Durum</h3>
-                            <p id="detail-status">-</p>
-                        </div>
-                        <div class="detail-card">
-                            <h3>Son Görüntü</h3>
-                            <p id="detail-last-time">-</p>
-                        </div>
-                        <div class="detail-card">
-                            <h3>Yenileme Aralığı</h3>
-                            <p>
-                                <select id="modal-refresh-interval">
-                                    <option value="1">1 saniye</option>
-                                    <option value="3" selected>3 saniye</option>
-                                    <option value="5">5 saniye</option>
-                                    <option value="10">10 saniye</option>
-                                </select>
-                            </p>
-                        </div>
-                        <div class="detail-card">
-                            <h3>Hızlı İzleme</h3>
-                            <p>
+                            <h3>Hızlı Erişim</h3>
+                            <div class="quick-actions">
                                 <button id="view-5min-video" class="action-btn">
                                     <i class="fas fa-film"></i> Son 5 Dakika
                                 </button>
-                            </p>
+                            </div>
                         </div>
                     </div>
                     
                     <div class="history-section">
                         <div class="history-tabs">
-                            <button class="history-tab-btn active" data-tab="screenshots">
-                                <i class="fas fa-image"></i> Ekran Görüntüleri
-                            </button>
-                            <button class="history-tab-btn" data-tab="videos">
-                                <i class="fas fa-film"></i> Videolar
+                            <button class="history-tab-btn active" data-tab="videos">
+                                <i class="fas fa-film"></i> Geçmiş
                             </button>
                         </div>
 
-                        <div class="history-tab-content active" id="screenshots-tab">
-                            <h3><i class="fas fa-history"></i> Son Görüntüler</h3>
-                            
-                            <div class="history-controls">
-                                <div class="form-group">
-                                    <label for="history-date-filter">Tarih:</label>
-                                    <select id="history-date-filter">
-                                        <option value="all">Tümü</option>
-                                        <!-- Will be populated with available dates -->
-                                    </select>
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="history-search">Ara:</label>
-                                    <input type="text" id="history-search" placeholder="Saat veya dosya adı...">
-                                </div>
-                                
-                                <div class="history-playback-controls">
-                                    <button id="history-play-btn" title="Oynat/Duraklat"><i class="fas fa-play"></i></button>
-                                    <button id="history-prev-btn" title="Önceki"><i class="fas fa-step-backward"></i></button>
-                                    <button id="history-next-btn" title="Sonraki"><i class="fas fa-step-forward"></i></button>
-                                    <span id="history-counter">0/0</span>
-                                </div>
-                            </div>
-                            
-                            <div class="history-playback-container">
-                                <img id="history-playback-image" src="" alt="Geçmiş görüntü" />
-                                <div id="history-timeline"></div>
-                                <div id="history-timestamp">--:--:--</div>
-                            </div>
-                            
-                            <div id="history-grid" class="history-grid">
-                                <!-- Will be populated with recent screenshots -->
-                                <div class="empty-state">
-                                    <i class="fas fa-spinner refresh-animation"></i>
-                                    <p>Geçmiş yükleniyor...</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="history-tab-content" id="videos-tab">
-                            <h3><i class="fas fa-film"></i> Video Geçmişi</h3>
-                            
+                        <div class="history-tab-content active" id="videos-tab">
                             <!-- Video Timeline Container -->
                             <div id="video-timeline-container" class="video-timeline-container">
                                 <!-- Will be populated with timeline data -->
                             </div>
                             
                             <div class="video-history-controls">
-                                <div class="form-group">
+                                <div class="filter-group">
                                     <label for="video-date-filter">Tarih:</label>
                                     <select id="video-date-filter">
                                         <option value="all">Tümü</option>
                                         <!-- Will be populated with available dates -->
                                     </select>
                                 </div>
-                                <div class="form-group">
+                                <div class="filter-group">
                                     <label for="video-type-filter">Video Tipi:</label>
                                     <select id="video-type-filter">
                                         <option value="all">Tümü</option>
                                         <option value="daily">Günlük</option>
-                                        <option value="hourly">Saatlik</option>
+                                        <option value="hourly">15 Dakikalık</option>
                                         <option value="5min">5 Dakikalık</option>
                                     </select>
                                 </div>
