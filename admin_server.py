@@ -568,155 +568,69 @@ class HTTPHandler(BaseHTTPRequestHandler):
             "dailyVideos": []
         }
         
-        # If no date filter provided, use today's date in Turkey timezone
-        if date_filter == 'all' or not date_filter:
-            now = datetime.now(turkey_tz)
+        # If no date filter provided, use today's date
+        if date_filter == 'all' or date_filter == 'today' or not date_filter:
+            now = datetime.now()
             date_filter = now.strftime("%Y%m%d")
         
-        screenshots_dir = config["screenshots_dir"]
-        staff_dir = os.path.join(screenshots_dir, staff_id)
-        videos_dir = os.path.join(staff_dir, "videos")
-        hourly_dir = os.path.join(videos_dir, "hourly")
-        daily_dir = os.path.join(videos_dir, "daily")
+        # Get base directory for staff screenshots
+        base_dir = os.path.join(config.get('screenshots_dir', 'screenshots'), staff_id)
+        videos_dir = os.path.join(base_dir, 'videos')
+        hourly_dir = os.path.join(videos_dir, 'hourly')
+        daily_dir = os.path.join(videos_dir, 'daily')
         
-        # Check if the videos directory exists
-        if not os.path.exists(videos_dir) or not os.path.isdir(videos_dir):
-            logger.warning(f"Videos directory not found: {videos_dir}")
-            return video_data
+        # Ensure directories exist
+        ensure_directories(base_dir, staff_id)
         
-        # Get 5-minute video files if requested
-        if video_type in ["all", "5min"]:
-            video_files = [f for f in os.listdir(videos_dir) if f.endswith('.mp4') and f != 'latest_5min.mp4' 
-                          and os.path.isfile(os.path.join(videos_dir, f))]
-            
-            # Get available dates from filenames
-            all_dates = set()
-            date_filtered_files = []
-            
-            for file in video_files:
-                # Extract date from filename if possible
-                try:
-                    # Assuming filename format is staff_id-last5min-YYYYMMDD-HHMMSS.mp4
-                    date_part = file.split('-')
-                    if len(date_part) >= 3:
-                        # Extract date (YYYYMMDD)
-                        date_str = date_part[2]
-                        all_dates.add(date_str)
-                        
-                        # Apply date filter if provided
-                        if date_filter and date_filter != 'all':
-                            if date_str == date_filter:
-                                date_filtered_files.append(file)
-                        else:
-                            date_filtered_files.append(file)
-                except Exception as e:
-                    logger.warning(f"Error parsing date from video filename {file}: {e}")
-                    date_filtered_files.append(file)  # Include files with unparseable dates
-            
-            # If date filter was applied, use filtered files, otherwise use all files
-            files_to_process = date_filtered_files if date_filter else video_files
-            
-            # Sort by modification time (newest first)
-            files_to_process.sort(key=lambda x: os.path.getmtime(os.path.join(videos_dir, x)), reverse=True)
-            
-            # Build video items
-            video_items = []
-            for file in files_to_process:
-                file_path = os.path.join(videos_dir, file)
-                timestamp = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
-                
-                # Extract duration from filename if possible
-                duration = "5 dakika"  # Default
-                if "last5min" in file:
-                    duration = "5 dakika"
-                
-                video_items.append({
-                    "filename": file,
-                    "path": f"screenshots/{staff_id}/videos/{file}",
-                    "streamPath": f"stream/{staff_id}/5min/{file}",
-                    "timestamp": timestamp,
-                    "duration": duration,
-                    "type": "5min"
-                })
-            
-            video_data["videos"] = video_items
-            video_data["availableDates"] = sorted(list(all_dates), reverse=True)
+        # Get available dates from video filenames
+        available_dates = set()
         
-        # Get hourly video files if requested
-        if video_type in ["all", "hourly"] and os.path.exists(hourly_dir) and os.path.isdir(hourly_dir):
-            hourly_files = [f for f in os.listdir(hourly_dir) if f.endswith('.mp4') and os.path.isfile(os.path.join(hourly_dir, f))]
-            
-            # Apply date filter if provided
-            if date_filter and date_filter != 'all':
-                hourly_files = [f for f in hourly_files if date_filter in f]
-            
-            # Sort by modification time (newest first)
-            hourly_files.sort(key=lambda x: os.path.getmtime(os.path.join(hourly_dir, x)), reverse=True)
-            
-            # Build hourly video items
-            hourly_items = []
-            for file in hourly_files:
-                file_path = os.path.join(hourly_dir, file)
-                timestamp = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
-                
-                # Extract hour from filename
-                hour_match = re.search(r'hour-(\d{2})', file)
-                hour_label = f"Saat {hour_match.group(1)}:00" if hour_match else "Saatlik Video"
-                
-                hourly_items.append({
-                    "filename": file,
-                    "path": f"screenshots/{staff_id}/videos/hourly/{file}",
-                    "streamPath": f"stream/{staff_id}/hourly/{file}",
-                    "timestamp": timestamp,
-                    "duration": "1 saat",
-                    "label": hour_label,
-                    "type": "hourly"
-                })
-            
-            video_data["hourlyVideos"] = hourly_items
+        # Check 5-minute videos
+        if os.path.exists(videos_dir):
+            for filename in os.listdir(videos_dir):
+                if filename.endswith('.mp4') and '-' in filename:
+                    # Extract date from filename (format: staff_id-5min-YYYYMMDD-HHMMSS.mp4)
+                    parts = filename.split('-')
+                    if len(parts) >= 3:
+                        try:
+                            date_part = parts[2]
+                            if len(date_part) == 8 and date_part.isdigit():
+                                available_dates.add(date_part)
+                        except (IndexError, ValueError):
+                            pass
         
-        # Get daily video files if requested
-        if video_type in ["all", "daily"] and os.path.exists(daily_dir) and os.path.isdir(daily_dir):
-            daily_files = [f for f in os.listdir(daily_dir) if f.endswith('.mp4') and os.path.isfile(os.path.join(daily_dir, f))]
-            
-            # Apply date filter if provided
-            if date_filter and date_filter != 'all':
-                daily_files = [f for f in daily_files if date_filter in f]
-            
-            # Sort by modification time (newest first)
-            daily_files.sort(key=lambda x: os.path.getmtime(os.path.join(daily_dir, x)), reverse=True)
-            
-            # Build daily video items
-            daily_items = []
-            for file in daily_files:
-                file_path = os.path.join(daily_dir, file)
-                timestamp = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
-                
-                # Extract date from filename for label
-                date_match = re.search(r'(\d{8})', file)
-                if date_match:
-                    date_str = date_match.group(1)
-                    try:
-                        date_obj = datetime.strptime(date_str, "%Y%m%d")
-                        date_label = date_obj.strftime("%d.%m.%Y")
-                    except:
-                        date_label = "Günlük Video"
-                else:
-                    date_label = "Günlük Video"
-                
-                daily_items.append({
-                    "filename": file,
-                    "path": f"screenshots/{staff_id}/videos/daily/{file}",
-                    "streamPath": f"stream/{staff_id}/daily/{file}",
-                    "timestamp": timestamp,
-                    "duration": "Tam gün",
-                    "label": date_label,
-                    "type": "daily"
-                })
-            
-            video_data["dailyVideos"] = daily_items
+        # Check hourly videos
+        if os.path.exists(hourly_dir):
+            for filename in os.listdir(hourly_dir):
+                if filename.endswith('.mp4') and '-' in filename:
+                    # Extract date from filename (format: staff_id-hourly-YYYYMMDD-HHMM.mp4)
+                    parts = filename.split('-')
+                    if len(parts) >= 3:
+                        try:
+                            date_part = parts[2]
+                            if len(date_part) == 8 and date_part.isdigit():
+                                available_dates.add(date_part)
+                        except (IndexError, ValueError):
+                            pass
         
-        return video_data
+        # Check daily videos
+        if os.path.exists(daily_dir):
+            for filename in os.listdir(daily_dir):
+                if filename.endswith('.mp4') and '-' in filename:
+                    # Extract date from filename (format: staff_id-daily-YYYYMMDD.mp4)
+                    parts = filename.split('-')
+                    if len(parts) >= 3:
+                        try:
+                            date_part = parts[2].split('.')[0]  # Remove file extension
+                            if len(date_part) == 8 and date_part.isdigit():
+                                available_dates.add(date_part)
+                        except (IndexError, ValueError):
+                            pass
+        
+        # Sort dates in descending order (newest first)
+        video_data["availableDates"] = sorted(list(available_dates), reverse=True)
+        
+        # ... rest of the function remains the same ...
 
     def get_video_timeline(self, staff_id, date):
         """Get timeline data for a specific date

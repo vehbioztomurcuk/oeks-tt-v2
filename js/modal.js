@@ -53,9 +53,7 @@ function openModal(staffId) {
     }
     
     // Load video history for this staff member - default to today
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
-    fetchStaffVideoHistory(staffId, dateStr);
+    fetchStaffVideoHistory(staffId, 'today');
     
     // Show modal immediately
     document.getElementById('live-view-modal').style.display = 'block';

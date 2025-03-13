@@ -18,7 +18,7 @@ let currentDateFilter = 'all';
  * @param {string} dateFilter - Date filter (format: 'YYYYMMDD' or 'all')
  * @returns {Promise} Promise that resolves with video history data
  */
-function fetchStaffVideoHistory(staffId, dateFilter = 'all') {
+function fetchStaffVideoHistory(staffId, dateFilter = 'today') {
     // Show loading state
     const videoGrid = document.getElementById('video-history-grid');
     videoGrid.innerHTML = '<div class="empty-state"><i class="fas fa-spinner refresh-animation"></i><p>Video geçmişi yükleniyor...</p></div>';
@@ -33,9 +33,12 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'all') {
     
     console.log(`[DEBUG] Fetching video history for staff ${staffId} with date filter ${dateFilter}`);
     
-    const url = dateFilter === 'all' 
+    // If dateFilter is 'today', use 'all' for the API call to get today's videos
+    const apiDateFilter = dateFilter === 'today' ? 'all' : dateFilter;
+    
+    const url = apiDateFilter === 'all' 
         ? `/api/staff-videos/${staffId}` 
-        : `/api/staff-videos/${staffId}?date=${dateFilter}`;
+        : `/api/staff-videos/${staffId}?date=${apiDateFilter}`;
     
     return fetch(url)
         .then(response => {
@@ -56,9 +59,14 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'all') {
             // Update date filter dropdown
             const dateFilter = document.getElementById('video-date-filter');
             if (dateFilter) {
-                dateFilter.innerHTML = '<option value="all">Bugün</option>';
+                dateFilter.innerHTML = '<option value="today">Bugün</option>';
                 
                 (data.availableDates || []).forEach(date => {
+                    // Skip today's date if it's in the list
+                    const today = new Date();
+                    const todayStr = today.toISOString().split('T')[0].replace(/-/g, '');
+                    if (date === todayStr) return;
+                    
                     // Format date as DD.MM.YYYY for Turkish format
                     const year = date.substring(0, 4);
                     const month = date.substring(4, 6);
@@ -70,13 +78,22 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'all') {
                     option.textContent = formattedDate;
                     dateFilter.appendChild(option);
                 });
+                
+                // Set the selected value
+                if (currentDateFilter === 'today') {
+                    dateFilter.value = 'today';
+                } else {
+                    // If the current date filter exists in the options, select it
+                    const exists = Array.from(dateFilter.options).some(opt => opt.value === currentDateFilter);
+                    dateFilter.value = exists ? currentDateFilter : 'today';
+                }
             }
             
             // Update video grid with chronological display
             updateChronologicalVideoGrid();
             
             // Fetch timeline data for the selected date
-            if (dateFilter !== 'all') {
+            if (dateFilter !== 'all' && dateFilter !== 'today') {
                 fetchVideoTimeline(staffId, dateFilter);
             } else {
                 // For "today", get today's date in YYYYMMDD format
