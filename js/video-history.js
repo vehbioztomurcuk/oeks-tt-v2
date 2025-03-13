@@ -88,12 +88,15 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'today') {
             // Update date filter dropdown
             const dateFilter = document.getElementById('video-date-filter');
             if (dateFilter) {
+                // Get today's date in YYYYMMDD format
+                const today = new Date();
+                const todayStr = today.toISOString().split('T')[0].replace(/-/g, '');
+                
                 dateFilter.innerHTML = '<option value="today">Bugün</option>';
                 
+                // Add available dates to dropdown
                 (data.availableDates || []).forEach(date => {
                     // Skip today's date if it's in the list
-                    const today = new Date();
-                    const todayStr = today.toISOString().split('T')[0].replace(/-/g, '');
                     if (date === todayStr) return;
                     
                     // Format date as DD.MM.YYYY for Turkish format
@@ -122,8 +125,8 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'today') {
             updateChronologicalVideoGrid();
             
             // Fetch timeline data for the selected date
-            if (dateFilter !== 'all' && dateFilter !== 'today') {
-                fetchVideoTimeline(staffId, dateFilter);
+            if (currentDateFilter !== 'all' && currentDateFilter !== 'today') {
+                fetchVideoTimeline(staffId, currentDateFilter);
             } else {
                 // For "today", get today's date in YYYYMMDD format
                 const today = new Date();

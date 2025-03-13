@@ -603,49 +603,122 @@ class HTTPHandler(BaseHTTPRequestHandler):
         # Check 5-minute videos
         if os.path.exists(videos_dir):
             for filename in os.listdir(videos_dir):
-                if filename.endswith('.mp4') and '-' in filename:
-                    # Extract date from filename (format: staff_id-5min-YYYYMMDD-HHMMSS.mp4)
-                    parts = filename.split('-')
-                    if len(parts) >= 3:
+                if filename.endswith('.mp4') and filename != 'latest_5min.mp4':
+                    # Try to extract date from filename
+                    date_match = None
+                    
+                    # Pattern: staff_id-last5min-YYYYMMDD-HHMMSS.mp4
+                    if 'last5min' in filename:
+                        parts = filename.split('-')
+                        if len(parts) >= 3:
+                            date_match = parts[2]
+                    
+                    # Pattern: staff_id-5min-YYYYMMDD-HHMMSS.mp4
+                    elif '5min' in filename:
+                        parts = filename.split('-')
+                        if len(parts) >= 3:
+                            date_match = parts[2]
+                    
+                    # Try to extract date using regex
+                    if not date_match:
+                        import re
+                        date_matches = re.findall(r'(\d{8})', filename)
+                        if date_matches:
+                            date_match = date_matches[0]
+                    
+                    # Validate date format
+                    if date_match and len(date_match) == 8 and date_match.isdigit():
                         try:
-                            date_part = parts[2]
-                            if len(date_part) == 8 and date_part.isdigit():
-                                available_dates.add(date_part)
-                        except (IndexError, ValueError):
-                            pass
-        
-        # Check hourly videos
-        if os.path.exists(hourly_dir):
-            for filename in os.listdir(hourly_dir):
-                if filename.endswith('.mp4') and '-' in filename:
-                    # Extract date from filename (format: staff_id-hourly-YYYYMMDD-HHMM.mp4)
-                    parts = filename.split('-')
-                    if len(parts) >= 3:
-                        try:
-                            date_part = parts[2]
-                            if len(date_part) == 8 and date_part.isdigit():
-                                available_dates.add(date_part)
-                        except (IndexError, ValueError):
-                            pass
-        
-        # Check daily videos
-        if os.path.exists(daily_dir):
-            for filename in os.listdir(daily_dir):
-                if filename.endswith('.mp4') and '-' in filename:
-                    # Extract date from filename (format: staff_id-daily-YYYYMMDD.mp4)
-                    parts = filename.split('-')
-                    if len(parts) >= 3:
-                        try:
-                            date_part = parts[2].split('.')[0]  # Remove file extension
-                            if len(date_part) == 8 and date_part.isdigit():
-                                available_dates.add(date_part)
-                        except (IndexError, ValueError):
+                            year = int(date_match[:4])
+                            month = int(date_match[4:6])
+                            day = int(date_match[6:8])
+                            if 2020 <= year <= 2030 and 1 <= month <= 12 and 1 <= day <= 31:
+                                available_dates.add(date_match)
+                        except (ValueError, IndexError):
                             pass
         
         # Sort dates in descending order (newest first)
         video_data["availableDates"] = sorted(list(available_dates), reverse=True)
         
-        # ... rest of the function remains the same ...
+        # Get videos for the selected date
+        if date_filter != 'all':
+            # Get 5-minute videos for the selected date
+            if video_type in ['all', '5min']:
+                if os.path.exists(videos_dir):
+                    for filename in os.listdir(videos_dir):
+                        if filename.endswith('.mp4') and filename != 'latest_5min.mp4' and date_filter in filename:
+                            file_path = os.path.join(videos_dir, filename)
+                            
+                            # Extract timestamp from filename
+                            timestamp = None
+                            hour = None
+                            minute = None
+                            
+                            try:
+                                # Pattern: staff_id-last5min-YYYYMMDD-HHMMSS.mp4
+                                if 'last5min' in filename:
+                                    parts = filename.split('-')
+                                    if len(parts) >= 4:
+                                        date_part = parts[2]
+                                        if len(parts) >= 5:
+                                            time_part = parts[4].split('.')[0]
+                                        else:
+                                            time_part = parts[3].split('.')[0]
+                                        
+                                        if time_part and len(time_part) >= 6:
+                                            hour = time_part[:2]
+                                            minute = time_part[2:4]
+                                            second = time_part[4:6]
+                                            timestamp = f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:8]}T{hour}:{minute}:{second}"
+                                
+                                # Pattern: staff_id-5min-YYYYMMDD-HHMMSS.mp4
+                                elif '5min' in filename:
+                                    parts = filename.split('-')
+                                    if len(parts) >= 4:
+                                        date_part = parts[2]
+                                        time_part = parts[3].split('.')[0]
+                                        
+                                        if time_part and len(time_part) >= 6:
+                                            hour = time_part[:2]
+                                            minute = time_part[2:4]
+                                            second = time_part[4:6]
+                                            timestamp = f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:8]}T{hour}:{minute}:{second}"
+                                
+                                # If timestamp extraction failed, use file modification time
+                                if not timestamp:
+                                    file_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+                                    timestamp = file_time.isoformat()
+                                    hour = str(file_time.hour).zfill(2)
+                                    minute = str(file_time.minute).zfill(2)
+                            except (IndexError, ValueError) as e:
+                                # Fallback to file modification time
+                                file_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+                                timestamp = file_time.isoformat()
+                                hour = str(file_time.hour).zfill(2)
+                                minute = str(file_time.minute).zfill(2)
+                            
+                            # Create stream path for video
+                            stream_path = f"/stream/{staff_id}/5min/{filename}"
+                            
+                            # Format time for label
+                            label = f"5 Dakika - {hour}:{minute}"
+                            
+                            video_data["videos"].append({
+                                "path": file_path,
+                                "filename": filename,
+                                "timestamp": timestamp,
+                                "duration": "5:00",  # Default duration for 5-minute videos
+                                "type": "5min",
+                                "streamPath": stream_path,
+                                "label": label
+                            })
+        
+        # Sort videos by timestamp (newest first)
+        video_data["videos"].sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        video_data["hourlyVideos"].sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        video_data["dailyVideos"].sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        
+        return video_data
 
     def get_video_timeline(self, staff_id, date):
         """Get video timeline data for a specific date
@@ -657,23 +730,22 @@ class HTTPHandler(BaseHTTPRequestHandler):
         Returns:
             dict: Timeline data for the date
         """
-        global config
+        import re
+        from datetime import datetime
         
-        # Check if staff_id is valid
-        if not staff_id or staff_id == "unknown":
-            self.log_message("Invalid staff ID for video timeline: %s", staff_id)
-            return {
-                "staffId": staff_id,
-                "date": date,
-                "segments": []
-            }
-        
+        # Initialize timeline data structure
         timeline_data = {
             "staffId": staff_id,
             "date": date,
             "segments": []
         }
         
+        # Check if staff_id is valid
+        if not staff_id or staff_id == "unknown":
+            logger.warning(f"Invalid staff ID for video timeline: {staff_id}")
+            return timeline_data
+        
+        # Get base directory for staff videos
         screenshots_dir = config["screenshots_dir"]
         staff_dir = os.path.join(screenshots_dir, staff_id)
         videos_dir = os.path.join(staff_dir, "videos")
@@ -683,86 +755,163 @@ class HTTPHandler(BaseHTTPRequestHandler):
             logger.warning(f"Videos directory not found: {videos_dir}")
             return timeline_data
         
-        # Get all video files for the specified date
-        video_files = [f for f in os.listdir(videos_dir) 
-                      if f.endswith('.mp4') and date in f and f != 'latest_5min.mp4'
-                      and os.path.isfile(os.path.join(videos_dir, f))]
-        
-        # Sort by timestamp in filename
-        video_files.sort(key=lambda x: x.split('-')[-1].split('.')[0] if len(x.split('-')) > 3 else "000000")
-        
-        # Build timeline segments
-        for file in video_files:
-            # Extract timestamp from filename
-            try:
-                # Assuming filename format is staff_id-last5min-YYYYMMDD-HHMMSS.mp4
-                parts = file.split('-')
-                if len(parts) >= 4:
-                    time_str = parts[3].split('.')[0]  # HHMMSS
-                    hour = time_str[:2]
-                    minute = time_str[2:4]
+        try:
+            # Get all video files for the specified date
+            video_files = [f for f in os.listdir(videos_dir) 
+                          if f.endswith('.mp4') and date in f and f != 'latest_5min.mp4'
+                          and os.path.isfile(os.path.join(videos_dir, f))]
+            
+            # Sort by timestamp in filename
+            video_files.sort(key=lambda x: x.split('-')[-1].split('.')[0] if len(x.split('-')) > 3 else "000000")
+            
+            # Build timeline segments for 5-minute videos
+            for file in video_files:
+                try:
+                    # Try different filename patterns
+                    hour = None
+                    minute = None
+                    
+                    # Pattern: staff_id-last5min-YYYYMMDD-HHMMSS.mp4
+                    if 'last5min' in file:
+                        parts = file.split('-')
+                        if len(parts) >= 4:
+                            if len(parts) >= 5:  # Format with separate date and time parts
+                                time_str = parts[4].split('.')[0]  # Remove extension
+                            else:
+                                time_str = parts[3].split('.')[0]  # Remove extension
+                            
+                            if time_str and len(time_str) >= 4:
+                                hour = int(time_str[:2])
+                                minute = int(time_str[2:4])
+                    
+                    # Pattern: staff_id-5min-YYYYMMDD-HHMMSS.mp4
+                    elif '5min' in file:
+                        parts = file.split('-')
+                        if len(parts) >= 4:
+                            time_str = parts[3].split('.')[0]  # HHMMSS
+                            if time_str and len(time_str) >= 4:
+                                hour = int(time_str[:2])
+                                minute = int(time_str[2:4])
+                    
+                    # If we couldn't extract time, use file modification time
+                    if hour is None or minute is None:
+                        file_path = os.path.join(videos_dir, file)
+                        file_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+                        hour = file_time.hour
+                        minute = file_time.minute
                     
                     # Create a segment entry
                     segment = {
                         "filename": file,
                         "path": f"screenshots/{staff_id}/videos/{file}",
                         "streamPath": f"stream/{staff_id}/5min/{file}",
-                        "hour": int(hour),
-                        "minute": int(minute),
-                        "label": f"{hour}:{minute}",
+                        "hour": hour,
+                        "minute": minute,
+                        "label": f"{hour:02d}:{minute:02d}",
                         "type": "5min"
                     }
                     
                     timeline_data["segments"].append(segment)
-            except Exception as e:
-                logger.warning(f"Error parsing timestamp from video filename {file}: {e}")
-        
-        # Add hourly videos if available
-        hourly_dir = os.path.join(videos_dir, "hourly")
-        if os.path.exists(hourly_dir) and os.path.isdir(hourly_dir):
-            hourly_files = [f for f in os.listdir(hourly_dir) 
-                           if f.endswith('.mp4') and date in f 
-                           and os.path.isfile(os.path.join(hourly_dir, f))]
+                except Exception as e:
+                    logger.warning(f"Error parsing timestamp from video filename {file}: {e}")
             
-            for file in hourly_files:
-                # Extract hour from filename
-                hour_match = re.search(r'hour-(\d{2})', file)
-                if hour_match:
-                    hour = int(hour_match.group(1))
-                    
-                    # Create a segment entry
-                    segment = {
-                        "filename": file,
-                        "path": f"screenshots/{staff_id}/videos/hourly/{file}",
-                        "streamPath": f"stream/{staff_id}/hourly/{file}",
-                        "hour": hour,
-                        "minute": 0,
-                        "label": f"{hour}:00",
-                        "type": "hourly"
-                    }
-                    
-                    timeline_data["segments"].append(segment)
-        
-        # Add daily video if available
-        daily_dir = os.path.join(videos_dir, "daily")
-        if os.path.exists(daily_dir) and os.path.isdir(daily_dir):
-            daily_files = [f for f in os.listdir(daily_dir) 
-                          if f.endswith('.mp4') and date in f 
-                          and os.path.isfile(os.path.join(daily_dir, f))]
-            
-            for file in daily_files:
-                # Create a segment entry for the daily video
-                segment = {
-                    "filename": file,
-                    "path": f"screenshots/{staff_id}/videos/daily/{file}",
-                    "streamPath": f"stream/{staff_id}/daily/{file}",
-                    "hour": 0,
-                    "minute": 0,
-                    "label": "Tam Gün",
-                    "type": "daily"
-                }
+            # Add hourly videos if available
+            hourly_dir = os.path.join(videos_dir, "hourly")
+            if os.path.exists(hourly_dir) and os.path.isdir(hourly_dir):
+                hourly_files = [f for f in os.listdir(hourly_dir) 
+                               if f.endswith('.mp4') and date in f 
+                               and os.path.isfile(os.path.join(hourly_dir, f))]
                 
-                timeline_data["segments"].append(segment)
+                for file in hourly_files:
+                    try:
+                        # Try different filename patterns
+                        hour = None
+                        minute = None
+                        
+                        # Pattern: staff_id-hourly-YYYYMMDD-HHMM.mp4
+                        if 'hourly' in file:
+                            parts = file.split('-')
+                            if len(parts) >= 4:
+                                time_str = parts[3].split('.')[0]  # HHMM
+                                if time_str and len(time_str) >= 4:
+                                    hour = int(time_str[:2])
+                                    minute = int(time_str[2:4])
+                        
+                        # Pattern: staff_id-15min-YYYYMMDD-HHMM.mp4 (for testing)
+                        elif '15min' in file:
+                            parts = file.split('-')
+                            if len(parts) >= 4:
+                                time_str = parts[3].split('.')[0]  # HHMM
+                                if time_str and len(time_str) >= 4:
+                                    hour = int(time_str[:2])
+                                    minute = int(time_str[2:4])
+                        
+                        # Try regex pattern for hour-XX
+                        if hour is None:
+                            hour_match = re.search(r'hour-(\d{2})', file)
+                            if hour_match:
+                                hour = int(hour_match.group(1))
+                                minute = 0
+                        
+                        # If we couldn't extract time, use file modification time
+                        if hour is None:
+                            file_path = os.path.join(hourly_dir, file)
+                            file_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+                            hour = file_time.hour
+                            minute = file_time.minute
+                        
+                        # Create a segment entry
+                        segment = {
+                            "filename": file,
+                            "path": f"screenshots/{staff_id}/videos/hourly/{file}",
+                            "streamPath": f"stream/{staff_id}/hourly/{file}",
+                            "hour": hour,
+                            "minute": minute,
+                            "label": f"{hour:02d}:{minute:02d}",
+                            "type": "hourly"
+                        }
+                        
+                        timeline_data["segments"].append(segment)
+                    except Exception as e:
+                        logger.warning(f"Error parsing timestamp from hourly video filename {file}: {e}")
+            
+            # Add daily video if available
+            daily_dir = os.path.join(videos_dir, "daily")
+            if os.path.exists(daily_dir) and os.path.isdir(daily_dir):
+                daily_files = [f for f in os.listdir(daily_dir) 
+                              if f.endswith('.mp4') and date in f 
+                              and os.path.isfile(os.path.join(daily_dir, f))]
+                
+                for file in daily_files:
+                    try:
+                        # Format date for label (DD.MM.YYYY)
+                        year = date[:4]
+                        month = date[4:6]
+                        day = date[6:8]
+                        date_label = f"{day}.{month}.{year}"
+                        
+                        # Daily videos span the whole day, so we set hour to 0
+                        segment = {
+                            "filename": file,
+                            "path": f"screenshots/{staff_id}/videos/daily/{file}",
+                            "streamPath": f"stream/{staff_id}/daily/{file}",
+                            "hour": 0,
+                            "minute": 0,
+                            "label": f"Günlük Video - {date_label}",
+                            "type": "daily"
+                        }
+                        
+                        timeline_data["segments"].append(segment)
+                    except Exception as e:
+                        logger.warning(f"Error processing daily video filename {file}: {e}")
+            
+            # Sort segments by hour and minute
+            timeline_data["segments"].sort(key=lambda x: (x["hour"], x["minute"]))
+            
+        except Exception as e:
+            logger.error(f"Error generating video timeline for staff {staff_id}, date {date}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
         
         return timeline_data
 
@@ -1360,8 +1509,8 @@ async def video_generation_task():
             for staff_info in staff_list:
                 staff_id = staff_info["staff_id"]
                 
-                # Generate 5-minute videos
-                await generate_staff_video(staff_id)
+                # Generate 5-minute videos - don't await this function as it's not async
+                generate_staff_video(staff_id)
                 
                 # TESTING: Generate videos every 15 minutes instead of hourly for faster testing
                 # TODO: Change back to 60 minutes after testing is complete

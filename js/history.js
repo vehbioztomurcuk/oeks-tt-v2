@@ -274,7 +274,12 @@ function startHistoryPlayback() {
  */
 function stopHistoryPlayback() {
     isPlaying = false;
-    document.getElementById('history-play-btn').innerHTML = '<i class="fas fa-play"></i>';
+    
+    // Check if the play button exists before trying to update it
+    const playBtn = document.getElementById('history-play-btn');
+    if (playBtn) {
+        playBtn.innerHTML = '<i class="fas fa-play"></i>';
+    }
     
     if (historyPlaybackInterval) {
         clearInterval(historyPlaybackInterval);
