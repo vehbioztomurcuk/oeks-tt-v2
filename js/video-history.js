@@ -50,6 +50,35 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'today') {
         .then(data => {
             console.log("[DEBUG] Video history data received:", data);
             
+            // Handle null response
+            if (!data) {
+                videoGrid.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-film"></i>
+                        <p>Bu personel için video bulunamadı</p>
+                    </div>
+                `;
+                
+                // Update date filter dropdown with empty options
+                const dateFilter = document.getElementById('video-date-filter');
+                if (dateFilter) {
+                    dateFilter.innerHTML = '<option value="today">Bugün</option>';
+                }
+                
+                // Hide timeline
+                const timelineContainer = document.getElementById('video-timeline-container');
+                if (timelineContainer) {
+                    timelineContainer.innerHTML = `
+                        <div class="timeline-empty">
+                            <i class="fas fa-calendar-times"></i>
+                            <p>Bu personel için video kaydı bulunamadı</p>
+                        </div>
+                    `;
+                }
+                
+                return;
+            }
+            
             // Update video history items
             videoHistoryItems = data.videos || [];
             hourlyVideoItems = data.hourlyVideos || [];
@@ -113,6 +142,18 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'today') {
                     <p class="error-details">${error.message}</p>
                 </div>
             `;
+            
+            // Hide timeline or show error
+            const timelineContainer = document.getElementById('video-timeline-container');
+            if (timelineContainer) {
+                timelineContainer.innerHTML = `
+                    <div class="timeline-error">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p>Zaman çizelgesi yüklenirken hata oluştu</p>
+                    </div>
+                `;
+            }
+            
             throw error;
         });
 }
@@ -130,6 +171,17 @@ function fetchVideoTimeline(staffId, date) {
     timelineContainer.innerHTML = '<div class="timeline-loading"><i class="fas fa-spinner refresh-animation"></i> Zaman çizelgesi yükleniyor...</div>';
     timelineContainer.style.display = 'block';
     
+    // Check if staffId is valid
+    if (!staffId || staffId === 'unknown') {
+        timelineContainer.innerHTML = `
+            <div class="timeline-error">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p>Geçersiz personel kimliği</p>
+            </div>
+        `;
+        return;
+    }
+    
     fetch(`/api/video-timeline/${staffId}?date=${date}`)
         .then(response => {
             if (!response.ok) {
@@ -139,6 +191,18 @@ function fetchVideoTimeline(staffId, date) {
         })
         .then(data => {
             console.log("Timeline data received:", data);
+            
+            // Handle null or empty data
+            if (!data || !data.segments || data.segments.length === 0) {
+                timelineContainer.innerHTML = `
+                    <div class="timeline-empty">
+                        <i class="fas fa-calendar-times"></i>
+                        <p>Bu tarih için video kaydı bulunamadı</p>
+                    </div>
+                `;
+                return;
+            }
+            
             timelineData = data.segments || [];
             renderVideoTimeline(data);
         })

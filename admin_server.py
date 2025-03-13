@@ -536,7 +536,6 @@ class HTTPHandler(BaseHTTPRequestHandler):
                     if not chunk:
                         break
                     self.wfile.write(chunk)
-                    bytes_to_send -= len(chunk)
             
             logger.info(f"Streamed video {video_path} from position {start_byte}")
         
@@ -560,6 +559,17 @@ class HTTPHandler(BaseHTTPRequestHandler):
         """
         global config
         
+        # Check if staff_id is valid
+        if not staff_id or staff_id == "unknown":
+            self.log_message("Invalid staff ID for video history: %s", staff_id)
+            return {
+                "staffId": staff_id,
+                "videos": [],
+                "availableDates": [],
+                "hourlyVideos": [],
+                "dailyVideos": []
+            }
+        
         video_data = {
             "staffId": staff_id,
             "videos": [],
@@ -578,6 +588,11 @@ class HTTPHandler(BaseHTTPRequestHandler):
         videos_dir = os.path.join(base_dir, 'videos')
         hourly_dir = os.path.join(videos_dir, 'hourly')
         daily_dir = os.path.join(videos_dir, 'daily')
+        
+        # Check if directories exist
+        if not os.path.exists(base_dir):
+            self.log_message("Staff directory does not exist: %s", base_dir)
+            return video_data
         
         # Ensure directories exist
         ensure_directories(base_dir, staff_id)
@@ -633,16 +648,25 @@ class HTTPHandler(BaseHTTPRequestHandler):
         # ... rest of the function remains the same ...
 
     def get_video_timeline(self, staff_id, date):
-        """Get timeline data for a specific date
+        """Get video timeline data for a specific date
         
         Args:
             staff_id (str): ID of the staff member
             date (str): Date in YYYYMMDD format
         
         Returns:
-            dict: Timeline data with available video segments
+            dict: Timeline data for the date
         """
         global config
+        
+        # Check if staff_id is valid
+        if not staff_id or staff_id == "unknown":
+            self.log_message("Invalid staff ID for video timeline: %s", staff_id)
+            return {
+                "staffId": staff_id,
+                "date": date,
+                "segments": []
+            }
         
         timeline_data = {
             "staffId": staff_id,

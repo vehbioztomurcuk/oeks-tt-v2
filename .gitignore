@@ -1,3 +1,5 @@
 # Ignore screenshots directory and all its contents
 /screenshots/
 
+# Ignore config.json in root directory
+/config.json
