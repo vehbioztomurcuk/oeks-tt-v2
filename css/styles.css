@@ -492,147 +492,55 @@ button:hover {
 .history-section {
     grid-column: 1 / span 2;
     grid-row: 2;
-}
-
-.history-tabs {
-    display: flex;
-    border-bottom: 1px solid #34495e;
-    margin-bottom: 15px;
-}
-
-.history-tab-btn {
-    background: none;
-    border: none;
-    color: #95a5a6;
-    padding: 8px 15px;
-    cursor: pointer;
-    font-size: 1rem;
-    border-bottom: 3px solid transparent;
-}
-
-.history-tab-btn.active {
-    color: #3498db;
-    border-bottom-color: #3498db;
-}
-
-.history-tab-content {
-    display: none;
-}
-
-.history-tab-content.active {
-    display: block;
-}
-
-.video-timeline-container {
     background-color: #1e2430;
     border-radius: 6px;
     padding: 15px;
-    margin-bottom: 15px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
-.video-history-controls {
+.history-header {
     display: flex;
-    gap: 15px;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 15px;
-    flex-wrap: wrap;
+    border-bottom: 1px solid #34495e;
+    padding-bottom: 10px;
 }
 
-/* Use filter-group instead of form-group for video filters to avoid conflicts */
-.filter-group {
+.history-header h3 {
+    font-size: 1.1rem;
+    margin: 0;
+    color: #3498db;
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-.filter-group label {
-    color: #95a5a6;
-    font-size: 0.9rem;
-    white-space: nowrap;
+.history-date-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-.filter-group select {
+.history-date-filter label {
+    color: #95a5a6;
+    font-size: 0.9rem;
+}
+
+.history-date-filter select {
     background-color: #2c3e50;
     border: 1px solid #34495e;
     color: #ecf0f1;
     padding: 6px 10px;
     border-radius: 4px;
-    min-width: 120px;
-}
-
-.video-history-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 15px;
-}
-
-.video-item {
-    background-color: #1e2430;
-    border-radius: 6px;
-    overflow: hidden;
-    transition: transform 0.2s;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-}
-
-.video-item:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-}
-
-.video-item-thumbnail {
-    height: 100px;
-    background-color: #2c3e50;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-}
-
-.video-item-thumbnail i {
-    font-size: 2rem;
-    color: #3498db;
-}
-
-.video-duration {
-    position: absolute;
-    bottom: 5px;
-    right: 5px;
-    background-color: rgba(0, 0, 0, 0.7);
-    color: white;
-    padding: 2px 5px;
-    border-radius: 3px;
-    font-size: 0.8rem;
-}
-
-.video-item-info {
-    padding: 10px;
-}
-
-.video-item-title {
     font-size: 0.9rem;
-    margin-bottom: 8px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
-.video-play-btn {
-    width: 100%;
-    background-color: #2980b9;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 5px;
-    cursor: pointer;
-    font-size: 0.85rem;
-    transition: background-color 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-}
-
-.video-play-btn:hover {
-    background-color: #3498db;
+.video-timeline-container {
+    background-color: #2c3e50;
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 15px;
 }
 
 /* Timeline styles */
@@ -647,29 +555,6 @@ button:hover {
     font-size: 1rem;
     margin: 0;
     color: #3498db;
-}
-
-.timeline-controls {
-    display: flex;
-    gap: 8px;
-}
-
-.timeline-btn {
-    background-color: #2980b9;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 5px 10px;
-    cursor: pointer;
-    font-size: 0.85rem;
-    transition: background-color 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.timeline-btn:hover {
-    background-color: #3498db;
 }
 
 .timeline-scroll-container {
@@ -728,6 +613,16 @@ button:hover {
     background-color: #2ecc71;
 }
 
+.timeline-segment.daily {
+    background-color: #f39c12;
+    height: 30px;
+    top: 5px;
+}
+
+.timeline-segment.daily:hover {
+    background-color: #f1c40f;
+}
+
 .timeline-empty, .timeline-loading, .timeline-error {
     display: flex;
     flex-direction: column;
@@ -760,7 +655,7 @@ button:hover {
     color: #f39c12; /* Daily videos */
 }
 
-/* Responsive adjustments for timeline */
+/* Responsive adjustments */
 @media (max-width: 768px) {
     .timeline-hours {
         min-width: 800px;

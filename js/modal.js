@@ -52,22 +52,24 @@ function openModal(staffId) {
         detailLastTime.textContent = `${formatTimeDiff(now, new Date(staff.timestamp))} önce`;
     }
     
-    // Load video history for this staff member
-    fetchStaffVideoHistory(staffId);
+    // Load video history for this staff member - default to today
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
+    fetchStaffVideoHistory(staffId, dateStr);
     
     // Show modal immediately
     document.getElementById('live-view-modal').style.display = 'block';
     
-    // Set up a refresh interval for both the modal info and the screenshot (if active)
+    // Set up a refresh interval for the screenshot (if active)
     if (staff.recording_status === 'active') {
-        // Active staff - refresh more frequently (every 3-10 seconds based on selector)
+        // Active staff - refresh every 3 seconds
         liveViewRefreshInterval = setInterval(() => {
             updateDetailInfo(staffId);
             // Also refresh the screenshot if active
             if (liveViewStaffId === staffId) {
                 updateLiveView(staffId);
             }
-        }, liveViewRefreshRate * 1000);
+        }, 3000);
     } else {
         // Inactive staff - slower refresh just for info
         liveViewRefreshInterval = setInterval(() => {

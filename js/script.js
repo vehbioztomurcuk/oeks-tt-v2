@@ -46,26 +46,52 @@ function initializeVideoHistoryControls() {
         });
     }
     
-    // Set up video type filter
-    const typeFilter = document.getElementById('video-type-filter');
-    if (typeFilter) {
-        typeFilter.addEventListener('change', (e) => {
-            if (liveViewStaffId) {
-                fetchStaffVideosByType(liveViewStaffId, currentDateFilter, e.target.value);
-            }
-        });
-    }
-    
     // Create timeline container if it doesn't exist
     if (!document.getElementById('video-timeline-container')) {
-        const videosTab = document.getElementById('videos-tab');
-        if (videosTab) {
+        const historySection = document.querySelector('.history-section');
+        if (historySection) {
             const timelineContainer = document.createElement('div');
             timelineContainer.id = 'video-timeline-container';
             timelineContainer.className = 'video-timeline-container';
-            videosTab.insertBefore(timelineContainer, videosTab.firstChild);
+            
+            // Insert after the history header
+            const historyHeader = historySection.querySelector('.history-header');
+            if (historyHeader) {
+                historyHeader.insertAdjacentElement('afterend', timelineContainer);
+            } else {
+                historySection.insertBefore(timelineContainer, historySection.firstChild);
+            }
         }
     }
+    
+    // Add keyboard shortcuts for video player
+    document.addEventListener('keydown', (e) => {
+        // ESC key to close modals
+        if (e.key === 'Escape') {
+            const videoModals = document.querySelectorAll('.video-player-modal');
+            if (videoModals.length > 0) {
+                videoModals.forEach(modal => modal.remove());
+                return;
+            }
+            
+            const liveViewModal = document.getElementById('live-view-modal');
+            if (liveViewModal && liveViewModal.style.display === 'block') {
+                closeModal();
+            }
+        }
+        
+        // F key to toggle fullscreen on video
+        if (e.key === 'f' || e.key === 'F') {
+            const videoElement = document.querySelector('.video-player-modal video');
+            if (videoElement) {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                } else {
+                    videoElement.requestFullscreen();
+                }
+            }
+        }
+    });
 }
 
 /**

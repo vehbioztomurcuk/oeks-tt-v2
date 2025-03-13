@@ -31,7 +31,6 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'all') {
     currentStaffId = staffId;
     currentDateFilter = dateFilter;
     
-    // Add debug log for video history request
     console.log(`[DEBUG] Fetching video history for staff ${staffId} with date filter ${dateFilter}`);
     
     const url = dateFilter === 'all' 
@@ -54,18 +53,18 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'all') {
             dailyVideoItems = data.dailyVideos || [];
             filteredVideoItems = [...videoHistoryItems];
             
-            // Log counts for debugging
-            console.log(`[DEBUG] Found ${videoHistoryItems.length} 5-minute videos`);
-            console.log(`[DEBUG] Found ${hourlyVideoItems.length} 15-minute videos`); // Now 15-minute videos
-            console.log(`[DEBUG] Found ${dailyVideoItems.length} daily videos`);
-            
             // Update date filter dropdown
             const dateFilter = document.getElementById('video-date-filter');
             if (dateFilter) {
-                dateFilter.innerHTML = '<option value="all">Tümü</option>';
+                dateFilter.innerHTML = '<option value="all">Bugün</option>';
                 
                 (data.availableDates || []).forEach(date => {
-                    const formattedDate = new Date(`${date.substring(0, 4)}-${date.substring(4, 6)}-${date.substring(6, 8)}`).toLocaleDateString('tr-TR');
+                    // Format date as DD.MM.YYYY for Turkish format
+                    const year = date.substring(0, 4);
+                    const month = date.substring(4, 6);
+                    const day = date.substring(6, 8);
+                    const formattedDate = `${day}.${month}.${year}`;
+                    
                     const option = document.createElement('option');
                     option.value = date;
                     option.textContent = formattedDate;
@@ -73,18 +72,17 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'all') {
                 });
             }
             
-            // Update video grid
-            updateVideoHistoryGrid();
+            // Update video grid with chronological display
+            updateChronologicalVideoGrid();
             
-            // If a specific date is selected, fetch timeline data
+            // Fetch timeline data for the selected date
             if (dateFilter !== 'all') {
                 fetchVideoTimeline(staffId, dateFilter);
             } else {
-                // Hide timeline if no specific date is selected
-                const timelineContainer = document.getElementById('video-timeline-container');
-                if (timelineContainer) {
-                    timelineContainer.style.display = 'none';
-                }
+                // For "today", get today's date in YYYYMMDD format
+                const today = new Date();
+                const todayStr = today.toISOString().split('T')[0].replace(/-/g, '');
+                fetchVideoTimeline(staffId, todayStr);
             }
             
             return data;
@@ -146,11 +144,13 @@ function renderVideoTimeline(data) {
     const timelineContainer = document.getElementById('video-timeline-container');
     if (!timelineContainer) return;
     
-    // Format date for display
+    // Format date for display (Turkish format)
     let dateDisplay = '';
     try {
-        const dateObj = new Date(`${data.date.substring(0, 4)}-${data.date.substring(4, 6)}-${data.date.substring(6, 8)}`);
-        dateDisplay = dateObj.toLocaleDateString('tr-TR');
+        const year = data.date.substring(0, 4);
+        const month = data.date.substring(4, 6);
+        const day = data.date.substring(6, 8);
+        dateDisplay = `${day}.${month}.${year}`;
     } catch (e) {
         dateDisplay = data.date;
     }
@@ -159,17 +159,12 @@ function renderVideoTimeline(data) {
     let timelineHTML = `
         <div class="timeline-header">
             <h3><i class="fas fa-calendar-day"></i> ${dateDisplay} Zaman Çizelgesi</h3>
-            <div class="timeline-controls">
-                <button id="play-daily-video" class="timeline-btn" title="Günlük videoyu oynat">
-                    <i class="fas fa-play"></i> Günlük Video
-                </button>
-            </div>
         </div>
         <div class="timeline-scroll-container">
             <div class="timeline-hours">
     `;
     
-    // Create hour markers
+    // Create hour markers (using 24-hour format for Turkey)
     for (let hour = 0; hour < 24; hour++) {
         const hourStr = hour.toString().padStart(2, '0');
         timelineHTML += `<div class="timeline-hour" data-hour="${hour}">
@@ -187,30 +182,25 @@ function renderVideoTimeline(data) {
     
     // Add segments to the timeline
     data.segments.forEach(segment => {
-        if (segment.type === 'daily') {
-            // Handle daily video button
-            const dailyBtn = document.getElementById('play-daily-video');
-            if (dailyBtn) {
-                dailyBtn.addEventListener('click', () => {
-                    playStaffVideoStreaming(segment);
-                });
-                
-                // If no daily video, hide the button
-                if (!segment.streamPath) {
-                    dailyBtn.style.display = 'none';
-                }
-            }
-            return;
-        }
-        
-        // For 5min and hourly videos, add to timeline
+        // For all video types, add to timeline
         const hour = segment.hour;
         const hourContainer = document.getElementById(`hour-${hour}`);
         
         if (hourContainer) {
             const segmentEl = document.createElement('div');
             segmentEl.className = `timeline-segment ${segment.type}`;
-            segmentEl.title = `${segment.label} - ${segment.type === 'hourly' ? '1 saat' : '5 dakika'}`;
+            
+            // Set tooltip with more detailed information
+            let tooltipText = '';
+            if (segment.type === 'daily') {
+                tooltipText = `Günlük Video - ${dateDisplay}`;
+            } else if (segment.type === 'hourly') {
+                tooltipText = `15 Dakikalık Video - ${segment.label}`;
+            } else {
+                tooltipText = `5 Dakikalık Video - ${segment.label}`;
+            }
+            
+            segmentEl.title = tooltipText;
             segmentEl.setAttribute('data-path', segment.streamPath);
             
             // Position the segment based on minute (for 5min videos)
@@ -218,8 +208,13 @@ function renderVideoTimeline(data) {
                 const minute = segment.minute;
                 segmentEl.style.left = `${(minute / 60) * 100}%`;
                 segmentEl.style.width = '8%'; // Width for 5min segments
+            } else if (segment.type === 'hourly') {
+                // 15-minute videos span a quarter of the hour
+                const minute = segment.minute;
+                segmentEl.style.left = `${(minute / 60) * 100}%`;
+                segmentEl.style.width = '25%'; // Width for 15min segments
             } else {
-                // Hourly videos span the whole hour
+                // Daily videos span the whole day
                 segmentEl.style.width = '100%';
             }
             
@@ -244,9 +239,9 @@ function renderVideoTimeline(data) {
 }
 
 /**
- * Update video history grid
+ * Update video history grid with chronological display
  */
-function updateVideoHistoryGrid() {
+function updateChronologicalVideoGrid() {
     const videoGrid = document.getElementById('video-history-grid');
     videoGrid.innerHTML = '';
     
@@ -263,61 +258,36 @@ function updateVideoHistoryGrid() {
         return;
     }
     
-    // Add daily videos section if available
+    // Create a chronological array of all videos
+    let allVideos = [];
+    
+    // Add daily videos if available
     if (dailyVideoItems.length > 0) {
-        const dailySection = document.createElement('div');
-        dailySection.className = 'video-section';
-        dailySection.innerHTML = `
-            <h3 class="video-section-title"><i class="fas fa-calendar-day"></i> Günlük Videolar</h3>
-            <div class="video-section-grid" id="daily-videos-grid"></div>
-        `;
-        videoGrid.appendChild(dailySection);
-        
-        const dailyGrid = dailySection.querySelector('#daily-videos-grid');
-        
-        dailyVideoItems.forEach(item => {
-            const videoItem = createVideoGridItem(item);
-            dailyGrid.appendChild(videoItem);
-        });
+        allVideos = [...allVideos, ...dailyVideoItems];
     }
     
-    // Add 15-minute videos section if available (previously hourly)
+    // Add hourly videos if available
     if (hourlyVideoItems.length > 0) {
-        const hourlySection = document.createElement('div');
-        hourlySection.className = 'video-section';
-        hourlySection.innerHTML = `
-            <h3 class="video-section-title"><i class="fas fa-clock"></i> 15 Dakikalık Videolar</h3>
-            <div class="video-section-grid" id="hourly-videos-grid"></div>
-        `;
-        videoGrid.appendChild(hourlySection);
-        
-        const hourlyGrid = hourlySection.querySelector('#hourly-videos-grid');
-        
-        hourlyVideoItems.forEach(item => {
-            const videoItem = createVideoGridItem(item);
-            hourlyGrid.appendChild(videoItem);
-        });
+        allVideos = [...allVideos, ...hourlyVideoItems];
     }
     
-    // Add 5-minute videos section if available
-    if (filteredVideoItems.length > 0) {
-        const fiveMinSection = document.createElement('div');
-        fiveMinSection.className = 'video-section';
-        fiveMinSection.innerHTML = `
-            <h3 class="video-section-title"><i class="fas fa-film"></i> 5 Dakikalık Videolar</h3>
-            <div class="video-section-grid" id="five-min-videos-grid"></div>
-        `;
-        videoGrid.appendChild(fiveMinSection);
-        
-        const fiveMinGrid = fiveMinSection.querySelector('#five-min-videos-grid');
-        
-        filteredVideoItems.forEach(item => {
-            const videoItem = createVideoGridItem(item);
-            fiveMinGrid.appendChild(videoItem);
-        });
-    }
+    // Add 5-minute videos
+    allVideos = [...allVideos, ...filteredVideoItems];
     
-    console.log('[DEBUG] Video history grid updated with available videos');
+    // Sort all videos by timestamp (newest first)
+    allVideos.sort((a, b) => {
+        const timeA = new Date(a.timestamp).getTime();
+        const timeB = new Date(b.timestamp).getTime();
+        return timeB - timeA;
+    });
+    
+    // Add videos to grid
+    allVideos.forEach(item => {
+        const videoItem = createVideoGridItem(item);
+        videoGrid.appendChild(videoItem);
+    });
+    
+    console.log('[DEBUG] Chronological video grid updated with available videos');
 }
 
 /**

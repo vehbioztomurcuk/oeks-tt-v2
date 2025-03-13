@@ -16,6 +16,7 @@ import shutil
 import cv2
 import glob
 import tempfile
+import pytz
 
 # Add new imports for video streaming
 import re
@@ -30,6 +31,9 @@ logger = logging.getLogger('combined_server')
 
 # Load configuration at the top of the file
 config = None  # Initialize config variable
+
+# Use Turkey timezone for all datetime operations
+turkey_tz = pytz.timezone('Europe/Istanbul')
 
 def load_config():
     """Load configuration from admin_config.json"""
@@ -563,6 +567,11 @@ class HTTPHandler(BaseHTTPRequestHandler):
             "hourlyVideos": [],
             "dailyVideos": []
         }
+        
+        # If no date filter provided, use today's date in Turkey timezone
+        if date_filter == 'all' or not date_filter:
+            now = datetime.now(turkey_tz)
+            date_filter = now.strftime("%Y%m%d")
         
         screenshots_dir = config["screenshots_dir"]
         staff_dir = os.path.join(screenshots_dir, staff_id)
@@ -1431,13 +1440,13 @@ async def video_generation_task():
             logging.error(f"Error in video generation task: {e}")
             await asyncio.sleep(60)  # Wait a bit before retrying
 
-async def generate_hourly_video(staff_id, minutes=60):
+async def generate_hourly_video(staff_id, minutes=15):
     """
     Generate hourly video by combining 5-minute segments
     
     Args:
         staff_id: Staff ID
-        minutes: Minutes to combine (default 60, set to 15 for testing)
+        minutes: Minutes to combine (default 15 for testing, change to 60 after testing)
     """
     try:
         # Get the staff screenshots directory
@@ -1447,8 +1456,8 @@ async def generate_hourly_video(staff_id, minutes=60):
         # Ensure directories exist
         os.makedirs(videos_dir, exist_ok=True)
         
-        # Get current hour
-        now = datetime.now()
+        # Get current hour in Turkey timezone
+        now = datetime.now(turkey_tz)
         # For testing, we're using 15-minute intervals instead of full hours
         current_interval = now.replace(minute=now.minute - now.minute % minutes, second=0, microsecond=0)
         previous_interval = current_interval - timedelta(minutes=minutes)
