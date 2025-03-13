@@ -1032,8 +1032,21 @@ async def handle_client(websocket):
                         break
                     
                     staff_id = data.get("staff_id", "unknown")
+                    
+                    # Extract computer name from staff_id if name is not provided
+                    provided_name = data.get("name")
+                    if not provided_name or provided_name == "Unknown User":
+                        # If staff_id contains computer name (e.g., DESKTOP-ABC123_xyz), use it
+                        if "_" in staff_id:
+                            computer_name = staff_id.split("_")[0]
+                            display_name = f"PC: {computer_name}"
+                        else:
+                            display_name = f"PC: {staff_id}"
+                    else:
+                        display_name = provided_name
+                    
                     staff_info = {
-                        "name": data.get("name", "Unknown User"),
+                        "name": display_name,
                         "division": data.get("division", "Unassigned"),
                         "last_activity": datetime.now().isoformat(),
                         "activity_status": "active"
