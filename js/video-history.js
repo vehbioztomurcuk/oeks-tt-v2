@@ -19,6 +19,10 @@ let currentDateFilter = 'all';
  * @returns {Promise} Promise that resolves with video history data
  */
 function fetchStaffVideoHistory(staffId, dateFilter = 'today') {
+    // Store current staff and date for later use
+    currentStaffId = staffId;
+    currentDateFilter = dateFilter;
+    
     const timelineContainer = document.getElementById('video-timeline-container');
     
     // Show loading state
@@ -53,7 +57,12 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'today') {
     
     // Fetch video history data
     fetch(`/api/staff/${staffId}/videos?date=${dateFilter}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             console.log('Video history data:', data);
             
@@ -67,6 +76,11 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'today') {
                 return;
             }
             
+            // Store video data for later use
+            videoHistoryItems = data.videos || [];
+            hourlyVideoItems = data.hourlyVideos || [];
+            dailyVideoItems = data.dailyVideos || [];
+            
             // Fetch and render the timeline
             fetchVideoTimeline(staffId, dateFilter);
             
@@ -79,6 +93,7 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'today') {
                 <div class="empty-state">
                     <i class="fas fa-exclamation-triangle"></i>
                     <p>Video geçmişi yüklenirken hata oluştu.</p>
+                    <p class="error-details">${error.message}</p>
                 </div>
             `;
         });
@@ -93,7 +108,12 @@ function fetchVideoTimeline(staffId, date) {
     const timelineContainer = document.getElementById('video-timeline-container');
     
     fetch(`/api/staff/${staffId}/timeline?date=${date}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             console.log('Timeline data:', data);
             
@@ -107,7 +127,11 @@ function fetchVideoTimeline(staffId, date) {
                 return;
             }
             
-            renderVideoTimeline(data.segments);
+            // Store timeline data for later use
+            timelineData = data.segments;
+            
+            // Render the enhanced interactive timeline
+            renderInteractiveTimeline(data.segments);
         })
         .catch(error => {
             console.error('Error fetching video timeline:', error);
@@ -115,324 +139,388 @@ function fetchVideoTimeline(staffId, date) {
                 <div class="empty-state">
                     <i class="fas fa-exclamation-triangle"></i>
                     <p>Zaman çizelgesi yüklenirken hata oluştu.</p>
+                    <p class="error-details">${error.message}</p>
                 </div>
             `;
         });
 }
 
 /**
- * Render the video timeline
- * @param {Object} data - Timeline data
+ * Render an interactive horizontal timeline
+ * @param {Array} segments - Timeline segments data
  */
-function renderVideoTimeline(segments) {
+function renderInteractiveTimeline(segments) {
     const timelineContainer = document.getElementById('video-timeline-container');
     
-    // Group segments by hour
-    const hourlySegments = {};
-    segments.forEach(segment => {
-        const hour = segment.hour;
-        if (!hourlySegments[hour]) {
-            hourlySegments[hour] = [];
-        }
-        hourlySegments[hour].push(segment);
-    });
+    // Clear previous content
+    timelineContainer.innerHTML = '';
     
-    // Sort hours
-    const sortedHours = Object.keys(hourlySegments).sort((a, b) => parseInt(a) - parseInt(b));
-    
-    // Create timeline HTML
-    let timelineHTML = `<div class="timeline-wrapper">`;
-    
-    // Add daily videos at the top if they exist
-    const dailyVideos = segments.filter(segment => segment.type === 'daily');
-    if (dailyVideos.length > 0) {
-        timelineHTML += `
-            <div class="timeline-section daily-section">
-                <div class="timeline-header">
-                    <span class="timeline-label">Günlük Video</span>
+    // Create the main timeline structure
+    const timelineHTML = `
+        <div class="interactive-timeline">
+            <div class="timeline-controls">
+                <button class="timeline-nav-btn" id="timeline-prev-hour">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <div class="timeline-time-indicator">
+                    <span id="timeline-current-time">00:00 - 23:59</span>
                 </div>
-                <div class="timeline-items">
-        `;
-        
-        dailyVideos.forEach(video => {
-            timelineHTML += `
-                <div class="timeline-item daily-item" data-stream-path="${video.streamPath}">
-                    <div class="timeline-item-content">
-                        <i class="fas fa-film"></i>
-                        <span>${video.label}</span>
+                <button class="timeline-nav-btn" id="timeline-next-hour">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+            
+            <div class="timeline-scroll-container">
+                <div class="timeline-hours-container">
+                    <!-- Hour markers will be added here -->
+                </div>
+                <div class="timeline-events-container">
+                    <!-- Video events will be added here -->
                     </div>
                 </div>
-            `;
-        });
-        
-        timelineHTML += `
+            
+            <div class="timeline-legend">
+                <div class="legend-item">
+                    <span class="legend-color daily-color"></span>
+                    <span class="legend-label">Günlük Video</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-color hourly-color"></span>
+                    <span class="legend-label">15 Dakikalık Video</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-color five-min-color"></span>
+                    <span class="legend-label">5 Dakikalık Video</span>
+                </div>
                 </div>
             </div>
         `;
-    }
     
-    // Add hourly timeline
-    timelineHTML += `<div class="timeline-hours">`;
-    
-    sortedHours.forEach(hour => {
-        const hourSegments = hourlySegments[hour];
-        
-        // Format hour for display
-        const displayHour = `${hour.padStart(2, '0')}:00`;
-        
-        timelineHTML += `
-            <div class="timeline-hour">
-                <div class="hour-marker">
-                    <span class="hour-label">${displayHour}</span>
-                </div>
-                <div class="hour-segments">
-        `;
-        
-        // First add hourly videos for this hour
-        const hourlyVideos = hourSegments.filter(segment => segment.type === 'hourly');
-        if (hourlyVideos.length > 0) {
-            hourlyVideos.forEach(video => {
-                timelineHTML += `
-                    <div class="timeline-item hourly-item" data-stream-path="${video.streamPath}">
-                        <div class="timeline-item-content">
-                            <i class="fas fa-film"></i>
-                            <span>15 Dakika - ${video.hour.toString().padStart(2, '0')}:${video.minute.toString().padStart(2, '0')}</span>
-                        </div>
-                    </div>
-                `;
-            });
-        }
-        
-        // Then add 5-minute videos
-        const fiveMinVideos = hourSegments.filter(segment => segment.type === '5min');
-        if (fiveMinVideos.length > 0) {
-            fiveMinVideos.forEach(video => {
-                timelineHTML += `
-                    <div class="timeline-item five-min-item" data-stream-path="${video.streamPath}">
-                        <div class="timeline-item-content">
-                            <i class="fas fa-film"></i>
-                            <span>5 Dakika - ${video.hour.toString().padStart(2, '0')}:${video.minute.toString().padStart(2, '0')}</span>
-                        </div>
-                    </div>
-                `;
-            });
-        }
-        
-        timelineHTML += `
-                </div>
-            </div>
-        `;
-    });
-    
-    timelineHTML += `</div></div>`;
-    
-    // Set the HTML
     timelineContainer.innerHTML = timelineHTML;
     
-    // Add click event listeners to all timeline items
-    const timelineItems = timelineContainer.querySelectorAll('.timeline-item');
-    timelineItems.forEach(item => {
-        item.addEventListener('click', function() {
+    // Get containers for hour markers and events
+    const hoursContainer = timelineContainer.querySelector('.timeline-hours-container');
+    const eventsContainer = timelineContainer.querySelector('.timeline-events-container');
+    
+    // Add hour markers (0-23)
+    for (let hour = 0; hour < 24; hour++) {
+        const hourMarker = document.createElement('div');
+        hourMarker.className = 'timeline-hour-marker';
+        hourMarker.setAttribute('data-hour', hour);
+        
+        // Format hour display (00, 01, ..., 23)
+        const displayHour = hour.toString().padStart(2, '0');
+        
+        hourMarker.innerHTML = `
+            <div class="hour-label">${displayHour}:00</div>
+            <div class="hour-tick"></div>
+        `;
+        
+        hoursContainer.appendChild(hourMarker);
+    }
+    
+    // Process and add video events to timeline
+    if (segments && segments.length > 0) {
+        // Group segments by type for easier processing
+        const dailyVideos = segments.filter(segment => segment.type === 'daily');
+        const hourlyVideos = segments.filter(segment => segment.type === 'hourly');
+        const fiveMinVideos = segments.filter(segment => segment.type === '5min');
+        
+        // Add daily videos at the top
+        dailyVideos.forEach(video => {
+            addVideoEventToTimeline(eventsContainer, video, 'daily');
+        });
+        
+        // Add hourly videos in the middle
+            hourlyVideos.forEach(video => {
+            addVideoEventToTimeline(eventsContainer, video, 'hourly');
+        });
+        
+        // Add 5-minute videos at the bottom
+        fiveMinVideos.forEach(video => {
+            addVideoEventToTimeline(eventsContainer, video, '5min');
+        });
+    }
+    
+    // Set up navigation controls
+    setupTimelineNavigation();
+    
+    // Initialize timeline to show the first event or current time
+    initializeTimelinePosition(segments);
+}
+
+/**
+ * Add a video event to the timeline
+ * @param {HTMLElement} container - Container element
+ * @param {Object} video - Video data
+ * @param {string} type - Video type (daily, hourly, 5min)
+ */
+function addVideoEventToTimeline(container, video, type) {
+    // Create event element
+    const eventElement = document.createElement('div');
+    eventElement.className = `timeline-event ${type}-event`;
+    
+    // Calculate position based on hour and minute
+    const hour = parseInt(video.hour) || 0;
+    const minute = parseInt(video.minute) || 0;
+    
+    // Position as percentage of day (24 hours)
+    const positionPercent = ((hour * 60 + minute) / (24 * 60)) * 100;
+    
+    // Set position
+    eventElement.style.left = `${positionPercent}%`;
+    
+    // Set data attributes for later use
+    eventElement.setAttribute('data-stream-path', video.streamPath);
+    eventElement.setAttribute('data-hour', hour);
+    eventElement.setAttribute('data-minute', minute);
+    eventElement.setAttribute('data-type', type);
+    
+    // Create tooltip with time information
+    let tooltipText = '';
+    if (type === 'daily') {
+        tooltipText = 'Günlük Video';
+    } else if (type === 'hourly') {
+        tooltipText = `15 Dakikalık Video - ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+    } else {
+        tooltipText = `5 Dakikalık Video - ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+    }
+    
+    // Add content
+    eventElement.innerHTML = `
+        <div class="event-marker">
+            <i class="fas fa-film"></i>
+                </div>
+        <div class="event-tooltip">${tooltipText}</div>
+    `;
+    
+    // Add click event to play video
+    eventElement.addEventListener('click', function() {
             const streamPath = this.getAttribute('data-stream-path');
             if (streamPath) {
                 openVideoPlayer(streamPath);
             }
         });
-    });
+    
+    // Add to container
+    container.appendChild(eventElement);
 }
 
 /**
- * Update video history grid with chronological display
+ * Set up timeline navigation controls
  */
-function updateChronologicalVideoGrid() {
-    const videoGrid = document.getElementById('video-history-grid');
-    videoGrid.innerHTML = '';
+function setupTimelineNavigation() {
+    const scrollContainer = document.querySelector('.timeline-scroll-container');
+    const prevHourBtn = document.getElementById('timeline-prev-hour');
+    const nextHourBtn = document.getElementById('timeline-next-hour');
+    const currentTimeIndicator = document.getElementById('timeline-current-time');
     
-    // Check if we have any videos to display
-    const hasVideos = filteredVideoItems.length > 0 || hourlyVideoItems.length > 0 || dailyVideoItems.length > 0;
+    // Previous hour button
+    if (prevHourBtn) {
+        prevHourBtn.addEventListener('click', () => {
+            // Scroll left by 1 hour (4.166% of total width)
+            const scrollAmount = scrollContainer.scrollWidth * 0.04166;
+            scrollContainer.scrollBy({
+                left: -scrollAmount,
+                behavior: 'smooth'
+            });
+            updateTimeIndicator();
+        });
+    }
     
-    if (!hasVideos) {
-        videoGrid.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-film"></i>
-                <p>Bu tarih için video bulunamadı</p>
-            </div>
-        `;
+    // Next hour button
+    if (nextHourBtn) {
+        nextHourBtn.addEventListener('click', () => {
+            // Scroll right by 1 hour (4.166% of total width)
+            const scrollAmount = scrollContainer.scrollWidth * 0.04166;
+            scrollContainer.scrollBy({
+                left: scrollAmount,
+                behavior: 'smooth'
+            });
+            updateTimeIndicator();
+        });
+    }
+    
+    // Update time indicator on scroll
+    if (scrollContainer) {
+        scrollContainer.addEventListener('scroll', () => {
+            updateTimeIndicator();
+        });
+    }
+    
+    // Add keyboard navigation
+    document.addEventListener('keydown', (e) => {
+        // Only handle keys when timeline is visible
+        const timelineContainer = document.getElementById('video-timeline-container');
+        if (!timelineContainer || timelineContainer.style.display === 'none') {
         return;
     }
     
-    // Create a chronological array of all videos
-    let allVideos = [];
-    
-    // Add daily videos if available
-    if (dailyVideoItems.length > 0) {
-        allVideos = [...allVideos, ...dailyVideoItems];
-    }
-    
-    // Add hourly videos if available
-    if (hourlyVideoItems.length > 0) {
-        allVideos = [...allVideos, ...hourlyVideoItems];
-    }
-    
-    // Add 5-minute videos
-    allVideos = [...allVideos, ...filteredVideoItems];
-    
-    // Sort all videos by timestamp (newest first)
-    allVideos.sort((a, b) => {
-        const timeA = new Date(a.timestamp).getTime();
-        const timeB = new Date(b.timestamp).getTime();
-        return timeB - timeA;
-    });
-    
-    // Add videos to grid
-    allVideos.forEach(item => {
-        const videoItem = createVideoGridItem(item);
-        videoGrid.appendChild(videoItem);
-    });
-    
-    console.log('[DEBUG] Chronological video grid updated with available videos');
-}
-
-/**
- * Create a video grid item
- * @param {Object} item - Video item data
- * @returns {HTMLElement} The created video item element
- */
-function createVideoGridItem(item) {
-    const videoItem = document.createElement('div');
-    videoItem.className = 'video-item';
-    
-    // Format timestamp
-    const timestamp = new Date(item.timestamp);
-    const formattedDate = timestamp.toLocaleDateString('tr-TR');
-    const formattedTime = timestamp.toLocaleTimeString('tr-TR');
-    
-    // Determine icon based on video type
-    let icon = 'fa-film';
-    if (item.type === 'hourly') icon = 'fa-clock';
-    if (item.type === 'daily') icon = 'fa-calendar-day';
-    
-    // Use label if available, otherwise use formatted date/time
-    const title = item.label || `${formattedDate} ${formattedTime}`;
-    
-    videoItem.innerHTML = `
-        <div class="video-item-thumbnail">
-            <i class="fas ${icon}"></i>
-            <span class="video-duration">${item.duration}</span>
-        </div>
-        <div class="video-item-info">
-            <div class="video-item-title">${title}</div>
-            <button class="video-play-btn">
-                <i class="fas fa-play"></i> İzle
-            </button>
-        </div>
-    `;
-    
-    // Add click handler to play this video
-    const playBtn = videoItem.querySelector('.video-play-btn');
-    playBtn.addEventListener('click', () => {
-        playStaffVideoStreaming(item);
-    });
-    
-    return videoItem;
-}
-
-/**
- * Play a staff video with streaming support
- * @param {Object} videoItem - Video item to play
- * @param {number} startTime - Optional start time in seconds
- */
-function playStaffVideoStreaming(videoItem, startTime = 0) {
-    // Create a modal for the video
-    const videoModal = document.createElement('div');
-    videoModal.className = 'modal video-player-modal';
-    videoModal.style.display = 'block';
-    videoModal.style.zIndex = '2000'; // Higher than the staff modal
-    
-    // Determine the video source URL with streaming support
-    let videoSrc;
-    if (videoItem.streamPath) {
-        // Make sure streamPath is properly formatted
-        const streamPath = videoItem.streamPath.startsWith('/') 
-            ? videoItem.streamPath.substring(1) 
-            : videoItem.streamPath;
-        videoSrc = `${streamPath}?start=${startTime}&t=${Date.now()}`;
-    } else {
-        videoSrc = `${videoItem.path}?t=${Date.now()}`;
-    }
-    
-    console.log("Playing video from:", videoSrc);
-    
-    // Format timestamp for display
-    const timestamp = new Date(videoItem.timestamp);
-    const formattedDateTime = timestamp.toLocaleString('tr-TR');
-    
-    // Use label if available, otherwise use formatted date/time
-    const title = videoItem.label || formattedDateTime;
-    
-    // Add video content with loading indicator
-    videoModal.innerHTML = `
-        <div class="modal-content" style="width: 85%; max-width: 1200px;">
-            <div class="modal-header">
-                <h2><i class="fas fa-film"></i> ${title}</h2>
-                <div class="modal-header-controls">
-                    <button class="fullscreen-btn" title="Tam ekran">
-                        <i class="fas fa-expand"></i>
-                    </button>
-                    <button class="close-btn" title="Kapat">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="modal-body">
-                <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;" class="video-container">
-                    <div class="loading-indicator" style="position:absolute; top:0; left:0; right:0; bottom:0; display:flex; justify-content:center; align-items:center; background-color:#111; z-index:1;">
-                        <i class="fas fa-spinner refresh-animation" style="font-size:2rem; color:#3498db;"></i>
-                    </div>
-                    <video controls style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index:0;">
-                        <source src="${videoSrc}" type="video/mp4">
-                        Video oynatılamıyor.
-                    </video>
-                </div>
-                <div class="video-info" style="margin-top: 15px; text-align: center; color: #999;">
-                    <p>Video süresi: ${videoItem.duration}</p>
-                    <p>Oluşturma zamanı: ${formattedDateTime}</p>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // Add to document
-    document.body.appendChild(videoModal);
-    
-    // Get the video element and add event listeners
-    const videoElement = videoModal.querySelector('video');
-    const loadingIndicator = videoModal.querySelector('.loading-indicator');
-    const closeBtn = videoModal.querySelector('.close-btn');
-    const fullscreenBtn = videoModal.querySelector('.fullscreen-btn');
-    
-    // Close button handler
-    closeBtn.addEventListener('click', () => {
-        videoModal.remove();
-    });
-    
-    // Fullscreen button handler
-    fullscreenBtn.addEventListener('click', () => {
-        if (videoElement.requestFullscreen) {
-            videoElement.requestFullscreen();
-        } else if (videoElement.webkitRequestFullscreen) {
-            videoElement.webkitRequestFullscreen();
-        } else if (videoElement.msRequestFullscreen) {
-            videoElement.msRequestFullscreen();
+        // Left arrow: scroll left
+        if (e.key === 'ArrowLeft') {
+            const scrollAmount = scrollContainer.scrollWidth * 0.04166;
+            scrollContainer.scrollBy({
+                left: -scrollAmount,
+                behavior: 'smooth'
+            });
+            updateTimeIndicator();
+            e.preventDefault();
+        }
+        
+        // Right arrow: scroll right
+        if (e.key === 'ArrowRight') {
+            const scrollAmount = scrollContainer.scrollWidth * 0.04166;
+            scrollContainer.scrollBy({
+                left: scrollAmount,
+                behavior: 'smooth'
+            });
+            updateTimeIndicator();
+            e.preventDefault();
         }
     });
+    
+    // Function to update time indicator based on scroll position
+    function updateTimeIndicator() {
+        if (!scrollContainer || !currentTimeIndicator) return;
+        
+        // Calculate visible time range based on scroll position
+        const scrollPercent = scrollContainer.scrollLeft / (scrollContainer.scrollWidth - scrollContainer.clientWidth);
+        const totalMinutes = 24 * 60;
+        
+        // Calculate start and end minutes
+        const visibleWidth = scrollContainer.clientWidth / scrollContainer.scrollWidth;
+        const visibleMinutes = totalMinutes * visibleWidth;
+        
+        const startMinute = Math.floor(scrollPercent * (totalMinutes - visibleMinutes));
+        const endMinute = Math.min(startMinute + visibleMinutes, totalMinutes);
+        
+        // Format as HH:MM
+        const startHour = Math.floor(startMinute / 60);
+        const startMin = startMinute % 60;
+        const endHour = Math.floor(endMinute / 60);
+        const endMin = endMinute % 60;
+        
+        const startTime = `${startHour.toString().padStart(2, '0')}:${startMin.toString().padStart(2, '0')}`;
+        const endTime = `${endHour.toString().padStart(2, '0')}:${endMin.toString().padStart(2, '0')}`;
+        
+        // Update indicator
+        currentTimeIndicator.textContent = `${startTime} - ${endTime}`;
+    }
+    
+    // Initial update
+    updateTimeIndicator();
+}
+
+/**
+ * Initialize timeline position based on events or current time
+ * @param {Array} segments - Timeline segments
+ */
+function initializeTimelinePosition(segments) {
+    const scrollContainer = document.querySelector('.timeline-scroll-container');
+    if (!scrollContainer) return;
+    
+    // Default: position at current time of day
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    
+    // Calculate position as percentage (minus half the visible width to center)
+    const currentTimePercent = ((currentHour * 60 + currentMinute) / (24 * 60));
+    const scrollPosition = (scrollContainer.scrollWidth * currentTimePercent) - (scrollContainer.clientWidth / 2);
+    
+    // If we have segments, try to position at the first event
+    if (segments && segments.length > 0) {
+        // Find earliest event of the day
+        const sortedSegments = [...segments].sort((a, b) => {
+            const aTime = (parseInt(a.hour) * 60) + parseInt(a.minute);
+            const bTime = (parseInt(b.hour) * 60) + parseInt(b.minute);
+            return aTime - bTime;
+        });
+        
+        // Get earliest event
+        const earliestEvent = sortedSegments[0];
+        if (earliestEvent) {
+            const eventHour = parseInt(earliestEvent.hour) || 0;
+            const eventMinute = parseInt(earliestEvent.minute) || 0;
+            
+            // Calculate position
+            const eventTimePercent = ((eventHour * 60 + eventMinute) / (24 * 60));
+            const eventScrollPosition = (scrollContainer.scrollWidth * eventTimePercent) - (scrollContainer.clientWidth / 4);
+            
+            // Use event position if it's earlier than current time
+            if (eventTimePercent < currentTimePercent) {
+                scrollContainer.scrollLeft = Math.max(0, eventScrollPosition);
+                return;
+            }
+        }
+    }
+    
+    // Default to current time if no events or events are later
+    scrollContainer.scrollLeft = Math.max(0, scrollPosition);
+}
+
+/**
+ * Open a video player for the selected video
+ * @param {string} streamPath - Path to the video stream
+ */
+function openVideoPlayer(streamPath) {
+    if (!streamPath) {
+        console.error('No stream path provided for video player');
+        return;
+    }
+    
+    // Create video player from template
+    const videoPlayerTemplate = document.getElementById('video-player-template');
+    if (!videoPlayerTemplate) {
+        console.error('Video player template not found');
+        return;
+    }
+    
+    // Clone the template
+    const videoPlayerModal = videoPlayerTemplate.content.cloneNode(true);
+    
+    // Get video element and set source
+    const videoElement = videoPlayerModal.querySelector('video');
+    const sourceElement = videoPlayerModal.querySelector('source');
+    
+    if (videoElement && sourceElement) {
+        // Add cache-busting parameter
+        const videoSrc = `${streamPath}?t=${Date.now()}`;
+        sourceElement.src = videoSrc;
+        
+        // Set video title based on path
+        const videoTitle = videoPlayerModal.querySelector('.video-title');
+        if (videoTitle) {
+            // Extract time information from path if possible
+            let titleText = 'Video Oynatıcı';
+            
+            if (streamPath.includes('daily')) {
+                titleText = 'Günlük Video';
+            } else if (streamPath.includes('hourly')) {
+                titleText = '15 Dakikalık Video';
+            } else if (streamPath.includes('5min')) {
+                titleText = '5 Dakikalık Video';
+            }
+            
+            // Try to extract timestamp from path
+            const timeMatch = streamPath.match(/(\d{2})(\d{2})(\d{2})/);
+            if (timeMatch) {
+                const hour = timeMatch[1];
+                const minute = timeMatch[2];
+                titleText += ` - ${hour}:${minute}`;
+            }
+            
+            videoTitle.textContent = titleText;
+        }
+        
+        // Set up loading indicator
+        const loadingIndicator = videoPlayerModal.querySelector('.loading-indicator');
     
     // Hide loading indicator when video can play
     videoElement.addEventListener('canplay', () => {
         if (loadingIndicator) {
             loadingIndicator.style.display = 'none';
         }
-        videoElement.style.zIndex = '2'; // Bring video to front
         videoElement.play().catch(e => console.error('Error playing video:', e));
     });
     
@@ -443,71 +531,53 @@ function playStaffVideoStreaming(videoItem, startTime = 0) {
                 <div style="text-align:center; color:#e74c3c;">
                     <i class="fas fa-exclamation-triangle" style="font-size:2rem; margin-bottom:10px;"></i>
                     <p>Video yüklenirken hata oluştu.</p>
-                    <p style="font-size:0.8rem; margin-top:10px;">Dosya: ${videoSrc}</p>
+                        <p style="font-size:0.8rem; margin-top:10px;">Dosya: ${streamPath}</p>
                 </div>
             `;
         }
     });
     
-    // Close when clicking outside
-    videoModal.addEventListener('click', (e) => {
-        if (e.target === videoModal) {
-            videoModal.remove();
+        // Set up close button
+        const closeBtn = videoPlayerModal.querySelector('.close-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                document.querySelector('.video-player-modal').remove();
+            });
         }
-    });
+        
+        // Set up fullscreen button
+        const fullscreenBtn = videoPlayerModal.querySelector('.fullscreen-btn');
+        if (fullscreenBtn) {
+            fullscreenBtn.addEventListener('click', () => {
+                if (videoElement.requestFullscreen) {
+                    videoElement.requestFullscreen();
+                } else if (videoElement.webkitRequestFullscreen) {
+                    videoElement.webkitRequestFullscreen();
+                } else if (videoElement.msRequestFullscreen) {
+                    videoElement.msRequestFullscreen();
+            }
+        });
+    }
+    
+        // Add to document
+        document.body.appendChild(videoPlayerModal);
+        
+        // Set up click outside to close
+        const modal = document.querySelector('.video-player-modal');
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+        }
+    }
 }
 
 /**
- * Initialize video history controls
+ * Update date filter dropdown with available dates
+ * @param {Array} availableDates - Array of available dates in YYYYMMDD format
  */
-function initializeVideoHistoryControls() {
-    // Set up date filter
-    const dateFilter = document.getElementById('video-date-filter');
-    if (dateFilter) {
-        dateFilter.addEventListener('change', (e) => {
-            if (liveViewStaffId) {
-                fetchStaffVideoHistory(liveViewStaffId, e.target.value);
-            }
-        });
-    }
-    
-    // Set up tab switching
-    const tabButtons = document.querySelectorAll('.history-tab-btn');
-    const tabContents = document.querySelectorAll('.history-tab-content');
-    
-    tabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            // Remove active class from all buttons and contents
-            tabButtons.forEach(btn => btn.classList.remove('active'));
-            tabContents.forEach(content => content.classList.remove('active'));
-            
-            // Add active class to clicked button
-            button.classList.add('active');
-            
-            // Show corresponding tab content
-            const tabName = button.getAttribute('data-tab');
-            document.getElementById(`${tabName}-tab`).classList.add('active');
-            
-            // If switching to videos tab, load video history
-            if (tabName === 'videos' && liveViewStaffId) {
-                fetchStaffVideoHistory(liveViewStaffId, currentDateFilter);
-            }
-        });
-    });
-    
-    // Create timeline container if it doesn't exist
-    if (!document.getElementById('video-timeline-container')) {
-        const videosTab = document.getElementById('videos-tab');
-        if (videosTab) {
-            const timelineContainer = document.createElement('div');
-            timelineContainer.id = 'video-timeline-container';
-            timelineContainer.className = 'video-timeline-container';
-            videosTab.insertBefore(timelineContainer, videosTab.firstChild);
-        }
-    }
-}
-
-// Update the date filter dropdown
 function updateDateFilterDropdown(availableDates) {
     const dateFilter = document.getElementById('video-date-filter');
     if (!dateFilter) return;
@@ -536,4 +606,26 @@ function updateDateFilterDropdown(availableDates) {
             fetchStaffVideoHistory(staffId, this.value);
         }
     });
+}
+
+/**
+ * Refresh the timeline with current data
+ * This can be called when new videos are added
+ */
+function refreshTimeline() {
+    if (currentStaffId && currentDateFilter) {
+        fetchStaffVideoHistory(currentStaffId, currentDateFilter);
+    }
+}
+
+// Add a function to check for new videos periodically
+function setupTimelineAutoRefresh(interval = 60000) {
+    // Check every minute by default
+    setInterval(() => {
+        if (currentStaffId && currentDateFilter === 'today' && 
+            document.getElementById('video-timeline-container').style.display !== 'none') {
+            // Only refresh if we're viewing today's timeline and it's visible
+            refreshTimeline();
+        }
+    }, interval);
 } 
