@@ -78,7 +78,9 @@ function initializeVideoHistoryControls() {
     }
     
     // Set up timeline auto-refresh for today's videos
-    setupTimelineAutoRefresh(60000); // Check for new videos every minute
+    if (typeof setupTimelineAutoRefresh === 'function') {
+        setupTimelineAutoRefresh(60000); // Check for new videos every minute
+    }
     
     // Add keyboard shortcuts for video player and timeline navigation
     document.addEventListener('keydown', (e) => {
@@ -107,8 +109,6 @@ function initializeVideoHistoryControls() {
                 }
             }
         }
-        
-        // Left/Right arrow keys for timeline navigation (handled in setupTimelineNavigation)
     });
     
     // Add swipe gestures for mobile timeline navigation
@@ -163,12 +163,6 @@ function setupTimelineSwipeGestures() {
                 behavior: 'smooth'
             });
         }
-        
-        // Update time indicator if it exists
-        const updateTimeIndicator = document.querySelector('.timeline-time-indicator');
-        if (updateTimeIndicator && typeof updateTimeIndicator === 'function') {
-            updateTimeIndicator();
-        }
     }
 }
 
@@ -181,7 +175,9 @@ function setupTimelineSwipeGestures() {
 function fetchStaffVideosByType(staffId, dateFilter, videoType) {
     // Show loading state
     const videoGrid = document.getElementById('video-history-grid');
-    videoGrid.innerHTML = '<div class="empty-state"><i class="fas fa-spinner refresh-animation"></i><p>Video geçmişi yükleniyor...</p></div>';
+    if (videoGrid) {
+        videoGrid.innerHTML = '<div class="empty-state"><i class="fas fa-spinner refresh-animation"></i><p>Video geçmişi yükleniyor...</p></div>';
+    }
     
     // Construct URL with query parameters
     let url = `/api/staff-videos/${staffId}`;
@@ -205,7 +201,7 @@ function fetchStaffVideosByType(staffId, dateFilter, videoType) {
     fetch(url)
         .then(response => {
             if (!response.ok) {
-                throw new Error('Video history request failed');
+                throw new Error(`HTTP error! Status: ${response.status}`);
             }
             return response.json();
         })
@@ -213,17 +209,23 @@ function fetchStaffVideosByType(staffId, dateFilter, videoType) {
             console.log("[DEBUG] Video history data received:", data);
             
             // Update video history items
-            videoHistoryItems = data.videos || [];
-            hourlyVideoItems = data.hourlyVideos || [];
-            dailyVideoItems = data.dailyVideos || [];
-            filteredVideoItems = [...videoHistoryItems];
+            if (typeof videoHistoryItems !== 'undefined') {
+                videoHistoryItems = data.videos || [];
+                hourlyVideoItems = data.hourlyVideos || [];
+                dailyVideoItems = data.dailyVideos || [];
+                filteredVideoItems = [...videoHistoryItems];
+            }
             
-            // Update video grid
-            updateVideoHistoryGrid();
+            // Update video grid if the function exists
+            if (typeof updateVideoHistoryGrid === 'function') {
+                updateVideoHistoryGrid();
+            }
             
             // If a specific date is selected, fetch timeline data
             if (dateFilter !== 'all') {
-                fetchVideoTimeline(staffId, dateFilter);
+                if (typeof fetchVideoTimeline === 'function') {
+                    fetchVideoTimeline(staffId, dateFilter);
+                }
             } else {
                 // Hide timeline if no specific date is selected
                 const timelineContainer = document.getElementById('video-timeline-container');
@@ -234,13 +236,15 @@ function fetchStaffVideosByType(staffId, dateFilter, videoType) {
         })
         .catch(error => {
             console.error('[DEBUG] Error fetching video history:', error);
-            videoGrid.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <p>Video geçmişi yüklenirken hata oluştu</p>
-                    <p class="error-details">${error.message}</p>
-                </div>
-            `;
+            if (videoGrid) {
+                videoGrid.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p>Video geçmişi yüklenirken hata oluştu</p>
+                        <p class="error-details">${error.message}</p>
+                    </div>
+                `;
+            }
         });
 }
 

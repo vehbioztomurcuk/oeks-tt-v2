@@ -10,7 +10,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 import mimetypes
 from io import BytesIO
-from urllib.parse import urlparse, parse_qsl
+from urllib.parse import urlparse, parse_qsl, parse_qs
 import time
 import shutil
 import cv2
@@ -90,9 +90,10 @@ class HTTPHandler(BaseHTTPRequestHandler):
         """Handle GET requests"""
         global config
         try:
-            # Parse URL
+            # Parse the URL path
             parsed_url = urlparse(self.path)
             path = parsed_url.path
+            query = parse_qs(parsed_url.query)
             
             # Serve index.html
             if path == "/" or path == "":
@@ -101,7 +102,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
             
             # API endpoints
             elif path.startswith("/api/"):
-                self.handle_api_request(path)
+                self.handle_api_request(path, query)
                 return
             
             # Handle video streaming
@@ -314,127 +315,72 @@ class HTTPHandler(BaseHTTPRequestHandler):
             self.send_response(500)
             self.end_headers()
 
-    def handle_api_request(self, path):
-        """Handle API endpoints"""
-        if path == "/api/staff-list":
-            # Get staff list
-            staff_list = get_staff_list()
+    def handle_api_request(self, path, query=None):
+        """Handle API requests"""
+        if query is None:
+            query = {}
             
-            # Format for the frontend
-            staff_response = {
-                "staffList": [],
-                "staffData": {}
-            }
+        # Extract API endpoint
+        parts = path.split('/')
+        if len(parts) < 3:
+            self.send_error(400, "Invalid API request")
+            return
             
-            for staff in staff_list:
-                staff_id = staff["staff_id"]
-                staff_response["staffList"].append(staff_id)
-                staff_response["staffData"][staff_id] = {
-                    "name": staff["name"],
-                    "division": staff["division"],
-                    "recording_status": staff["activity_status"],
-                    "timestamp": staff.get("last_activity", datetime.now().isoformat()),
-                    "screenshot_path": staff["screenshot_path"]
-                }
-            
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(json.dumps(staff_response).encode())
+        # Log the API request for debugging
+        logging.debug(f"API request: {path} with query: {query}")
         
-        elif path == "/api/history" or path.startswith("/api/staff-history/"):
-            # Parse query parameters
-            query = urlparse(self.path).query
-            params = dict(parse_qsl(query))
+        # Staff list endpoint
+        if path == '/api/staff-list':
+            self.handle_staff_list()
+            return
             
-            # Get staff_id either from path or query parameter
-            staff_id = None
-            if path.startswith("/api/staff-history/"):
-                # Extract staff_id from path: /api/staff-history/{staff_id}
-                staff_id = path.split("/api/staff-history/")[1]
-                # Remove any additional path segments if present
-                if '/' in staff_id:
-                    staff_id = staff_id.split('/')[0]
-            else:
-                # Get from query parameter
-                staff_id = params.get("staff_id")
+        # Staff info endpoint - NEW
+        if path.startswith('/api/staff-info/'):
+            staff_id = path.split('/api/staff-info/')[1]
+            self.handle_staff_info(staff_id)
+            return
             
-            if not staff_id:
-                self.send_response(400)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "Missing staff_id parameter"}).encode())
-                return
+        # Staff screenshot endpoint - NEW
+        if path.startswith('/api/staff-screenshot/'):
+            staff_id = path.split('/api/staff-screenshot/')[1]
+            self.handle_staff_screenshot(staff_id)
+            return
             
-            # Extract date filter and limit parameters
-            date_filter = params.get("date", "all")
-            limit = params.get("limit", "20")
+        # Staff videos endpoint
+        if path.startswith('/api/staff/') and '/videos' in path:
+            # Extract staff_id from path
+            staff_id = path.split('/api/staff/')[1].split('/videos')[0]
+            date_filter = query.get('date', ['today'])[0]
+            self.get_staff_videos(staff_id, date_filter)
+            return
             
-            # Get history for the staff member
-            logger.info(f"Fetching history for staff ID: {staff_id}, date filter: {date_filter}, limit: {limit}")
-            history_data = self.get_staff_history(staff_id, date_filter, limit)
+        # Staff timeline endpoint
+        if path.startswith('/api/staff/') and '/timeline' in path:
+            # Extract staff_id from path
+            staff_id = path.split('/api/staff/')[1].split('/timeline')[0]
+            date_filter = query.get('date', ['today'])[0]
+            self.get_video_timeline(staff_id, date_filter)
+            return
             
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(json.dumps(history_data).encode())
-        
-        elif path.startswith("/api/staff-videos/"):
-            # Extract staff_id from path: /api/staff-videos/{staff_id}
-            staff_id = path.split("/api/staff-videos/")[1]
-            # Remove any additional path segments if present
-            if '/' in staff_id:
-                staff_id = staff_id.split('/')[0]
+        # Staff history endpoint
+        if path.startswith('/api/staff-history/'):
+            staff_id = path.split('/api/staff-history/')[1]
+            date_filter = query.get('date', [None])[0]
+            limit = int(query.get('limit', [20])[0])
+            self.get_staff_history(staff_id, date_filter, limit)
+            return
             
-            # Parse query parameters
-            query = urlparse(self.path).query
-            params = dict(parse_qsl(query))
+        # Staff videos by type endpoint
+        if path.startswith('/api/staff-videos/'):
+            staff_id = path.split('/api/staff-videos/')[1]
+            date_filter = query.get('date', [None])[0]
+            video_type = query.get('type', ['all'])[0]
+            self.get_staff_videos(staff_id, date_filter, video_type)
+            return
             
-            # Extract date filter parameter and video type
-            date_filter = params.get("date", "all")
-            video_type = params.get("type", "all")  # New parameter: 5min, hourly, daily
-            
-            # Get video history for the staff member
-            logger.info(f"Fetching video history for staff ID: {staff_id}, date filter: {date_filter}, type: {video_type}")
-            video_data = self.get_staff_videos(staff_id, date_filter, video_type)
-            
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(json.dumps(video_data).encode())
-        
-        # New API endpoint for video timeline data
-        elif path.startswith("/api/video-timeline/"):
-            # Extract staff_id and date from path: /api/video-timeline/{staff_id}/{date}
-            parts = path.split("/api/video-timeline/")[1].split('/')
-            staff_id = parts[0]
-            
-            # Parse query parameters
-            query = urlparse(self.path).query
-            params = dict(parse_qsl(query))
-            
-            # Extract date parameter
-            date = params.get("date", datetime.now().strftime("%Y%m%d"))
-            
-            # Get timeline data
-            timeline_data = self.get_video_timeline(staff_id, date)
-            
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(json.dumps(timeline_data).encode())
-        
-        else:
-            # Unknown API endpoint
-            logger.warning(f"Unknown API endpoint requested: {path}")
-            self.send_response(404)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "API endpoint not found"}).encode())
+        # If we get here, the API endpoint is unknown
+        logging.warning(f"Unknown API endpoint requested: {path}")
+        self.send_error(404, "API endpoint not found")
 
     def handle_video_streaming(self, path):
         """Handle video streaming requests with timestamp support"""

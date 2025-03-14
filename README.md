@@ -256,3 +256,28 @@ For our next session, we could focus on:
 The system is now more robust, user-friendly, and focused on the core functionality of monitoring staff activity through a clean, chronological timeline interface.
 
 
+
+```
+oeks-tt-v2
+├─ admin_config.json
+├─ admin_server.py
+├─ cleanup_script.py
+├─ css
+│  └─ styles.css
+├─ index.html
+├─ js
+│  ├─ dashboard.js
+│  ├─ history.js
+│  ├─ modal.js
+│  ├─ script.js
+│  ├─ utils.js
+│  └─ video-history.js
+├─ README-TR.md
+├─ README.md
+├─ requirements.txt
+├─ save.md
+├─ selam.html
+├─ source-2.html
+└─ staff_app.py
+
+```

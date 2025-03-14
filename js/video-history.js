@@ -56,7 +56,7 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'today') {
     }
     
     // Fetch video history data
-    fetch(`/api/staff/${staffId}/videos?date=${dateFilter}`)
+    fetch(`/api/staff-videos/${staffId}?date=${dateFilter}`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! Status: ${response.status}`);
@@ -107,7 +107,7 @@ function fetchStaffVideoHistory(staffId, dateFilter = 'today') {
 function fetchVideoTimeline(staffId, date) {
     const timelineContainer = document.getElementById('video-timeline-container');
     
-    fetch(`/api/staff/${staffId}/timeline?date=${date}`)
+    fetch(`/api/staff-videos/${staffId}/timeline?date=${date}`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! Status: ${response.status}`);

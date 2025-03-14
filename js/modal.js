@@ -24,16 +24,36 @@ function openModal(staffId) {
     const detailDivision = document.getElementById('detail-division');
     const detailLastTime = document.getElementById('detail-last-time');
     
+    // Store the staff ID for later use
+    liveViewStaffId = staffId;
+    
     // Reset modal content
-    modalScreenshot.src = '';
+    if (modalScreenshot) {
+        modalScreenshot.src = '';
+    }
     modalStaffName.textContent = 'Personel';
     modalStaffName.setAttribute('data-staff-id', staffId);
     detailDivision.textContent = '-';
     detailLastTime.textContent = '-';
     
+    // Show loading state in screenshot container
+    const screenshotContainer = document.querySelector('.modal-screenshot-container');
+    if (screenshotContainer) {
+        screenshotContainer.innerHTML = `
+            <div class="loading-indicator" style="display:flex; justify-content:center; align-items:center; height:100%;">
+                <i class="fas fa-spinner refresh-animation" style="font-size:2rem; color:#3498db;"></i>
+            </div>
+        `;
+    }
+    
     // Get staff info
-    fetch(`/api/staff/${staffId}`)
-        .then(response => response.json())
+    fetch(`/api/staff-info/${staffId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data && data.name) {
                 modalStaffName.textContent = data.name;
@@ -56,14 +76,31 @@ function openModal(staffId) {
                 }
                 
                 // Load screenshot
-                modalScreenshot.src = `/api/staff/${staffId}/screenshot?t=${Date.now()}`;
-                modalScreenshot.onload = function() {
-                    console.log('Screenshot loaded successfully');
-                };
-                modalScreenshot.onerror = function() {
-                    console.error('Failed to load screenshot');
-                    modalScreenshot.src = 'img/no-screenshot.png';
-                };
+                if (screenshotContainer) {
+                    // Create new image element
+                    const img = document.createElement('img');
+                    img.id = 'modal-screenshot';
+                    img.className = 'modal-screenshot';
+                    img.alt = `${data.name} ekranı`;
+                    img.src = `/api/staff-screenshot/${staffId}?t=${Date.now()}`;
+                    
+                    // Add load and error handlers
+                    img.onload = function() {
+                        console.log('Screenshot loaded successfully');
+                        // Remove loading indicator
+                        const loadingIndicator = screenshotContainer.querySelector('.loading-indicator');
+                        if (loadingIndicator) {
+                            loadingIndicator.remove();
+                        }
+                        // Add the image to the container
+                        screenshotContainer.appendChild(img);
+                    };
+                    
+                    img.onerror = function() {
+                        console.error('Failed to load screenshot');
+                        showScreenshotError("Ekran görüntüsü yüklenemedi");
+                    };
+                }
                 
                 // Load video history with 'today' as default
                 fetchStaffVideoHistory(staffId, 'today');
@@ -71,6 +108,8 @@ function openModal(staffId) {
         })
         .catch(error => {
             console.error('Error fetching staff info:', error);
+            // Show error message in modal
+            showScreenshotError(`Personel bilgisi alınamadı: ${error.message}`);
         });
     
     // Show modal
@@ -78,6 +117,30 @@ function openModal(staffId) {
     
     // Set up auto-refresh for screenshot
     startScreenshotRefresh(staffId);
+}
+
+/**
+ * Start auto-refresh for screenshots
+ * @param {string} staffId - ID of the staff member
+ */
+function startScreenshotRefresh(staffId) {
+    // Clear any existing intervals
+    if (liveViewRefreshInterval) {
+        clearInterval(liveViewRefreshInterval);
+        liveViewRefreshInterval = null;
+    }
+    
+    // Set refresh rate (default: 3 seconds)
+    const refreshRate = liveViewRefreshRate || 3;
+    
+    // Set up interval to refresh the screenshot
+    liveViewRefreshInterval = setInterval(() => {
+        if (liveViewStaffId) {
+            updateLiveView(liveViewStaffId);
+        }
+    }, refreshRate * 1000);
+    
+    console.log(`Set up screenshot refresh for ${staffId} every ${refreshRate} seconds`);
 }
 
 /**
@@ -244,18 +307,6 @@ function _performScreenshotUpdate(staffId) {
         return;
     }
     
-    // Check if the staff exists and is active
-    const staff = staffMembers[staffId];
-    if (!staff) {
-        console.warn(`Staff not found in data: ${staffId}`);
-        return;
-    }
-    
-    if (staff.recording_status !== 'active') {
-        console.log(`Not updating screenshot for inactive staff: ${staffId}`);
-        return;
-    }
-    
     console.log(`Updating live view for ${staffId}`);
     
     // Get the screenshot container
@@ -270,21 +321,35 @@ function _performScreenshotUpdate(staffId) {
     if (existingImg) {
         // Create a new timestamp for cache busting
         const timestamp = Date.now();
-        let screenshotUrl;
         
-        // Use the screenshot path from staffInfo
-        let cleanPath = staff.screenshot_path;
-        if (cleanPath.includes('?')) {
-            cleanPath = cleanPath.split('?')[0];
-        }
-        screenshotUrl = `${cleanPath}?t=${timestamp}`;
+        // Use the API endpoint for screenshots
+        const screenshotUrl = `/api/staff-screenshot/${staffId}?t=${timestamp}`;
         
         // Update the source
         existingImg.src = screenshotUrl;
         console.log(`Updated screenshot source to: ${screenshotUrl}`);
     } else {
         // No existing image, need to reload it
-        loadScreenshotForStaff(staffId, screenshotContainer);
+        // Use the API endpoint directly
+        const timestamp = Date.now();
+        const screenshotUrl = `/api/staff-screenshot/${staffId}?t=${timestamp}`;
+        
+        // Create a new image element
+        const imgElement = document.createElement('img');
+        imgElement.id = 'modal-screenshot';
+        imgElement.className = 'modal-screenshot';
+        imgElement.alt = 'Personel ekranı';
+        imgElement.src = screenshotUrl;
+        
+        // Add error handler
+        imgElement.onerror = () => {
+            console.error("Screenshot loading error");
+            showScreenshotError("Görüntü yüklenirken hata oluştu");
+        };
+        
+        // Clear container and add the new image
+        screenshotContainer.innerHTML = '';
+        screenshotContainer.appendChild(imgElement);
     }
 }
 
